@@ -59,3 +59,34 @@
   * **Access Token:** Có thời hạn ngắn, dùng để xác thực và cấp quyền gọi API.
   * **Refresh Token:** Lưu trữ an toàn, dùng để cấp phát lại Access Token khi hết hạn mà không bắt buộc người dùng đăng nhập lại liên tục.
   * **Làm được đăng kí tài khoản bằng google càng tốt.**
+
+### VII. GITHUB
+* **Tạo 1 repository mới:** Trước khi tạo folder Project trên máy local thì hãy tạo 1 repository mới và clone nó về. Ta sẽ làm việc ở repository đó. Tạo nhánh main và push code lần đầu lên
+
+* **Quy trình tạo nhánh và merge code:** Trước khi làm giai đoạn tiếp theo chúng ta sẽ quản lý như sau: Tạo mới 1 nhánh tính năng/module mới, trước khi làm 1 chức năng mới hay 1 module mới thì sẽ tạo 1 nhánh có tên trùng với tên module hoặc tính năng mới. Trong quá trình phát triển tính năng đó ta sẽ push code lên nhánh của tính năng/module đó. Sau khi làm hoàn thiện sẽ merge vào nhánh main thì sẽ xoá nhánh tính năng/module đi đó. Làm tương tự với các tính năng/module phía sau cho đến khi xong project.
+
+* **Lệnh:**
+ - Tạo và chuyển sang nhánh mới: 
+  git checkout -b feature/featureName
+
+ - Trong khi làm và khi làm xong tính năng (Commit & Push lên nhánh tính năng):
+  git add .
+  git commit -m "feat(featureName): complete...."
+  git push -u origin feature/featureName
+
+ - Sau khi kiểm tra mọi test pass (Merge vào main):
+ # 1. Chuyển về nhánh main
+ git checkout main
+
+ # 2. Gộp nhánh tính năng vào main
+ git merge feature/auth
+
+ # 3. Đẩy nhánh main đã cập nhật lên GitHub
+ git push origin main
+
+ - Xoá nhánh tính năng để giữ Git luôn sạch sẽ:
+  # 1. Xoá nhánh ở máy local của bạn
+  git branch -d feature/featureName
+
+  # 2. Xoá nhánh trên GitHub
+  git push origin --delete feature/featureName
