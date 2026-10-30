@@ -1,0 +1,20 @@
+# Thư mục thư viện
+node_modules/
+backend/node_modules/
+frontend/node_modules/
+
+# Biến môi trường bảo mật (TUYỆT ĐỐI KHÔNG PUSH LÊN GITHUB)
+.env
+backend/.env
+frontend/.env
+*.env.local
+
+# Bản build sản phẩm
+dist/
+frontend/dist/
+build/
+
+# Logs & hệ điều hành
+npm-debug.log*
+.DS_Store
+Thumbs.db
