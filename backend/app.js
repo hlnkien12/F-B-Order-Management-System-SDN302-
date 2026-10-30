@@ -2,10 +2,11 @@ const express = require("express");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
 const errorHandler = require("./middlewares/errorHandler");
+const authRoutes = require("./routes/authRoutes");
 
 const app = express();
 
-// 1. Cấu hình CORS cho phép gửi kèm httpOnly Cookie từ Frontend
+// 1. Cau hinh CORS cho phep gui kem httpOnly Cookie tu Frontend
 app.use(
     cors({
         origin: process.env.CLIENT_URL || "http://localhost:5173",
@@ -13,28 +14,29 @@ app.use(
     })
 );
 
-// 2. Middleware đọc JSON body và đọc Cookie
+// 2. Middleware doc JSON body va doc Cookie
 app.use(express.json());
 app.use(cookieParser());
 
-// 3. Endpoint kiểm tra trạng thái server (Health Check)
+// 3. Endpoint kiem tra trang thai server (Health Check)
 app.get("/api/health", (req, res) => {
     res.status(200).json({
-        message: "Server F&B Order đang hoạt động tốt!",
+        message: "Server F&B Order dang hoat dong tot!",
         data: { status: "OK", timestamp: new Date().toISOString() }
     });
 });
 
-// --- CÁC ROUTES CHÍNH SẼ ĐƯỢC GẮN TẠI ĐÂY Ở P1, P2, P3, P4 ---
+// 4. Gan cac routes chuc nang
+app.use("/api/auth", authRoutes);
 
-// 4. Bắt lỗi 404 cho mọi đường dẫn không tồn tại
+// 5. Bat loi 404 cho moi duong dan khong ton tai
 app.use((req, res) => {
     res.status(404).json({
-        error: `Đường dẫn [${req.method}] ${req.originalUrl} không tồn tại trên server!`
+        error: `Duong dan [${req.method}] ${req.originalUrl} khong ton tai tren server!`
     });
 });
 
-// 5. Middleware xử lý lỗi tập trung
+// 6. Middleware xu ly loi tap trung
 app.use(errorHandler);
 
 module.exports = app;

@@ -1,0 +1,63 @@
+### ==============================================================================
+### BO TEST API XAC THUC VA PHAN QUYEN JWT (REST CLIENT VS CODE)
+### ==============================================================================
+@BASE_URL = http://localhost:5000
+
+### 1. Dang ky tai khoan Khach hang hop le (Ky vong 201 Created)
+POST {{BASE_URL}}/api/auth/register
+Content-Type: application/json
+
+{
+  "name": "Nguyen Van Khach",
+  "email": "khach1@gmail.com",
+  "phone": "0912345678",
+  "password": "password123"
+}
+
+### 2. Thu dang ky trung Email (Ky vong 409 Conflict)
+POST {{BASE_URL}}/api/auth/register
+Content-Type: application/json
+
+{
+  "name": "Nguyen Van Khach Trung",
+  "email": "khach1@gmail.com",
+  "phone": "0912345678",
+  "password": "password123"
+}
+
+### 3. Thu dang ky sai dinh dang so dien thoai (Ky vong 400 Bad Request)
+POST {{BASE_URL}}/api/auth/register
+Content-Type: application/json
+
+{
+  "name": "Loi So Dien Thoai",
+  "email": "loi_sdt@gmail.com",
+  "phone": "12345",
+  "password": "password123"
+}
+
+### 4. Dang nhap voi tai khoan Admin mac dinh (Ky vong 200 OK + tra ve accessToken va set cookie)
+# @name loginAdmin
+POST {{BASE_URL}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@shop.com",
+  "password": "admin123"
+}
+
+### Luu token cua Admin vao bien de dung cho request tiep theo
+@adminToken = {{loginAdmin.response.body.data.accessToken}}
+
+### 5. Lay thong tin tai khoan hien tai bang token vua dang nhap (Ky vong 200 OK)
+GET {{BASE_URL}}/api/auth/me
+Authorization: Bearer {{adminToken}}
+
+### 6. Thu goi lay thong tin khi thieu token (Ky vong 401 Unauthorized)
+GET {{BASE_URL}}/api/auth/me
+
+### 7. Lam moi token bang Refresh Token trong Cookie (Ky vong 200 OK + cap accessToken moi)
+POST {{BASE_URL}}/api/auth/refresh
+
+### 8. Dang xuat he thong (Ky vong 200 OK + xoa token database va cookie)
+POST {{BASE_URL}}/api/auth/logout
