@@ -8,7 +8,6 @@ import AdminLayout from "./components/AdminLayout";
 import MenuPage from "./pages/customer/MenuPage";
 import CartPage from "./pages/customer/CartPage";
 import OrderTrackingPage from "./pages/customer/OrderTrackingPage";
-import MyOrdersPage from "./pages/customer/MyOrdersPage";
 
 // Pages Auth
 import LoginPage from "./pages/auth/LoginPage";
@@ -33,7 +32,10 @@ function App() {
                                 <Route path="/" element={<MenuPage />} />
                                 <Route path="/cart" element={<CartPage />} />
                                 <Route path="/track/:orderId" element={<OrderTrackingPage />} />
-                                <Route path="/my-orders" element={<MyOrdersPage />} />
+                                <Route
+                                    path="/my-orders"
+                                    element={<Navigate to="/cart" replace />}
+                                />
 
                                 {/* Luong dang nhap dang ky */}
                                 <Route path="/login" element={<LoginPage />} />
@@ -41,7 +43,10 @@ function App() {
 
                                 {/* Khu vuc Quan Tri & Nhan Vien (P6) */}
                                 <Route path="/admin" element={<AdminLayout />}>
-                                    <Route index element={<Navigate to="/admin/orders" replace />} />
+                                    <Route
+                                        index
+                                        element={<Navigate to="/admin/orders" replace />}
+                                    />
                                     <Route path="orders" element={<OrdersBoardPage />} />
                                     <Route path="menu" element={<MenuManagePage />} />
                                     <Route path="tables" element={<TablesPage />} />

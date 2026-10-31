@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const MenuItem = require("../models/MenuItem");
 const { emitToAll } = require("../socket");
+
 /**
  * 1. Lay danh sach thuc don (Public: Khach hang, Nhan vien, Admin)
  * Query ho tro: ?type=food|drink & search=ten_mon
@@ -57,7 +58,7 @@ exports.getMenuItemById = async (req, res) => {
  */
 exports.createMenuItem = async (req, res) => {
     try {
-        const { name, price, image, description, type } = req.body || {};
+        const { name, price, image, description, type, options } = req.body || {};
 
         if (!name || typeof name !== "string" || name.trim().length === 0) {
             return res.status(400).json({ error: "Ten mon la bat buoc!" });
@@ -77,7 +78,8 @@ exports.createMenuItem = async (req, res) => {
             price: numPrice,
             image: image && image.trim().length > 0 ? image.trim() : undefined,
             description: description ? description.trim() : "",
-            type: type.toLowerCase()
+            type: type.toLowerCase(),
+            options: Array.isArray(options) && options.length > 0 ? options : undefined
         });
 
         return res.status(201).json({
@@ -105,7 +107,7 @@ exports.updateMenuItem = async (req, res) => {
         }
 
         // Whitelist chi cho phep sua cac truong hop le
-        const { name, price, image, description, type, isAvailable } = req.body || {};
+        const { name, price, image, description, type, isAvailable, options } = req.body || {};
         if (name !== undefined) item.name = name.trim();
         if (price !== undefined) {
             const numPrice = Number(price);
@@ -123,6 +125,9 @@ exports.updateMenuItem = async (req, res) => {
             item.type = type.toLowerCase();
         }
         if (isAvailable !== undefined) item.isAvailable = Boolean(isAvailable);
+        if (options !== undefined && Array.isArray(options)) {
+            item.options = options;
+        }
 
         await item.save();
 

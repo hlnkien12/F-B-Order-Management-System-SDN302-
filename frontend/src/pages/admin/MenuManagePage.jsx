@@ -10,7 +10,8 @@ import {
     ButtonGroup,
     Spinner,
     Alert,
-    Modal
+    Modal,
+    Pagination
 } from "react-bootstrap";
 import axiosClient from "../../api/axiosClient";
 import { useAuth } from "../../context/AuthContext";
@@ -60,6 +61,13 @@ const MenuManagePage = () => {
 
     const [filterType, setFilterType] = useState("all");
     const [search, setSearch] = useState("");
+
+    const PAGE_SIZE = 8;
+    const [currentPage, setCurrentPage] = useState(1);
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [filterType, search]);
 
     // State cho Modal Thêm / Sửa món
     const [showModal, setShowModal] = useState(false);
@@ -230,6 +238,10 @@ const MenuManagePage = () => {
         return matchType && matchSearch;
     });
 
+    const totalPages = Math.max(1, Math.ceil(filteredItems.length / PAGE_SIZE));
+    const safePage = Math.min(currentPage, totalPages);
+    const pagedItems = filteredItems.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+
     return (
         <div>
             <div className="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
@@ -303,7 +315,7 @@ const MenuManagePage = () => {
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredItems.map((item) => (
+                                {pagedItems.map((item) => (
                                     <tr key={item._id}>
                                         <td>
                                             <div className="d-flex align-items-center gap-3">
@@ -328,6 +340,31 @@ const MenuManagePage = () => {
                                                     <div className="fw-bold">{item.displayName}</div>
                                                     <div className="small text-muted">
                                                         {item.displayDescription}
+                                                    </div>
+                                                    <div className="d-flex gap-1 flex-wrap mt-1">
+                                                        {(item.options && item.options.length > 0
+                                                            ? item.options
+                                                            : item.type === 'drink'
+                                                            ? [
+                                                                  { label: 'Size M', priceDelta: 0 },
+                                                                  { label: 'Size L', priceDelta: 5000 },
+                                                                  { label: 'Size XL', priceDelta: 10000 }
+                                                              ]
+                                                            : [
+                                                                  { label: 'Thường', priceDelta: 0 },
+                                                                  { label: 'Đặc biệt', priceDelta: 15000 }
+                                                              ]
+                                                        ).map((opt) => (
+                                                            <Badge
+                                                                key={opt.label}
+                                                                bg="light"
+                                                                text="dark"
+                                                                className="border fw-normal"
+                                                                style={{ fontSize: '0.7rem' }}
+                                                            >
+                                                                {opt.label}{opt.priceDelta > 0 ? ' (+' + (opt.priceDelta / 1000) + 'k)' : ''}
+                                                            </Badge>
+                                                        ))}
                                                     </div>
                                                 </div>
                                             </div>
@@ -387,6 +424,36 @@ const MenuManagePage = () => {
                             </tbody>
                         </Table>
                     </Card.Body>
+                    {totalPages > 1 && (
+                        <Card.Footer className="bg-white border-top d-flex flex-wrap justify-content-between align-items-center py-2 px-3">
+                            <span className="small text-muted">
+                                Hiển thị {(safePage - 1) * PAGE_SIZE + 1} - {Math.min(safePage * PAGE_SIZE, filteredItems.length)} trên tổng {filteredItems.length} món
+                            </span>
+                            <Pagination size="sm" className="mb-0">
+                                <Pagination.Prev
+                                    disabled={safePage <= 1}
+                                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                                >
+                                    Trước
+                                </Pagination.Prev>
+                                {Array.from({ length: totalPages }, (_, i) => i + 1).map((pageNum) => (
+                                    <Pagination.Item
+                                        key={pageNum}
+                                        active={pageNum === safePage}
+                                        onClick={() => setCurrentPage(pageNum)}
+                                    >
+                                        {pageNum}
+                                    </Pagination.Item>
+                                ))}
+                                <Pagination.Next
+                                    disabled={safePage >= totalPages}
+                                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                                >
+                                    Sau
+                                </Pagination.Next>
+                            </Pagination>
+                        </Card.Footer>
+                    )}
                 </Card>
             )}
 

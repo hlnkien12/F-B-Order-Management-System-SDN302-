@@ -41,7 +41,7 @@ const AdminLayout = () => {
                     <Nav variant="pills" className="gap-2 flex-wrap">
                         <Nav.Item>
                             <Nav.Link as={NavLink} to="/admin/orders" className="fw-semibold">
-                                Bảng Đơn Hàng
+                                Quản Lý Đơn Hàng
                             </Nav.Link>
                         </Nav.Item>
 

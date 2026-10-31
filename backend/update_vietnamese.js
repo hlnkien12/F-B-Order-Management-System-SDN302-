@@ -125,6 +125,7 @@ const updateVietnamese = async () => {
                 if (v.pattern.test(item.name)) {
                     item.name = v.name;
                     item.description = v.description;
+                    item.options = MenuItem.getDefaultOptions(item.type);
                     await item.save();
                     itemsUpdated++;
                     console.log(`- Da cap nhat: ${v.name}`);

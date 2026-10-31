@@ -38,9 +38,23 @@ const resolveMenuImage = (item) => {
     return item.type === "food" ? "/images/pho-bo.jpg" : "/images/tra-sua.jpg";
 };
 
+const getDefaultOptions = (type) => {
+    if (type === "drink") {
+        return [
+            { label: "Size M", priceDelta: 0 },
+            { label: "Size L", priceDelta: 5000 },
+            { label: "Size XL", priceDelta: 10000 }
+        ];
+    }
+    return [
+        { label: "Thường", priceDelta: 0 },
+        { label: "Đặc biệt", priceDelta: 15000 }
+    ];
+};
+
 const MenuPage = () => {
     const [searchParams] = useSearchParams();
-    const { tableCode, setTableCode, addToCart } = useCart();
+    const { tableCode, setTableCode, addToCart, archiveFinishedSessionIfDone } = useCart();
 
     const [menuItems, setMenuItems] = useState([]);
     const [tables, setTables] = useState([]);
@@ -51,15 +65,21 @@ const MenuPage = () => {
     const [searchTerm, setSearchTerm] = useState("");
     const [addedNotice, setAddedNotice] = useState("");
 
-    // 1. Đọc mã bàn từ URL (?table=T01)
+    // Luu trang thai loai/size dang duoc chon tren moi the mon { [itemId]: "Đặc biệt" | "Size L" }
+    const [selectedOptions, setSelectedOptions] = useState({});
+
+    // 1. Doc ma ban tu URL (?table=T01) va tu dong don phien cu neu da thanh toan xong
     useEffect(() => {
         const tableFromUrl = searchParams.get("table");
         if (tableFromUrl) {
             setTableCode(tableFromUrl.toUpperCase());
+            if (archiveFinishedSessionIfDone) {
+                archiveFinishedSessionIfDone();
+            }
         }
-    }, [searchParams, setTableCode]);
+    }, [searchParams, setTableCode, archiveFinishedSessionIfDone]);
 
-    // 2. Lấy danh sách bàn và danh sách thực đơn
+    // 2. Lay danh sach ban va danh sach thuc don
     useEffect(() => {
         const fetchData = async () => {
             try {
@@ -68,13 +88,19 @@ const MenuPage = () => {
                     axiosClient.get("/menu-items"),
                     axiosClient.get("/tables")
                 ]);
-                const mappedMenu = (menuRes.data || []).map((item) => ({
+                const rawItems = menuRes.data?.data || menuRes.data || [];
+                const mappedMenu = rawItems.map((item) => ({
                     ...item,
                     displayName: toVietnamese(item.name),
                     displayDescription: toVietnamese(item.description),
-                    image: resolveMenuImage(item)
+                    image: resolveMenuImage(item),
+                    effectiveOptions:
+                        Array.isArray(item.options) && item.options.length > 0
+                            ? item.options
+                            : getDefaultOptions(item.type)
                 }));
-                const mappedTables = (tableRes.data || []).map((t) => ({
+                const rawTables = tableRes.data?.data || tableRes.data || [];
+                const mappedTables = rawTables.map((t) => ({
                     ...t,
                     displayName: toVietnamese(t.name)
                 }));
@@ -89,7 +115,7 @@ const MenuPage = () => {
         fetchData();
     }, []);
 
-    // 3. Lắng nghe Socket: Khi nhân viên bật/tắt món -> tự động cập nhật realtime
+    // 3. Lang nghe Socket: Khi nhan vien bat/tat mon -> tu dong cap nhat realtime
     useEffect(() => {
         const handleMenuUpdated = (data) => {
             setMenuItems((prev) =>
@@ -105,7 +131,7 @@ const MenuPage = () => {
         };
     }, []);
 
-    // 4. Lọc danh sách món và tìm kiếm đa năng (gõ có dấu hay không dấu đều tìm được)
+    // 4. Loc danh sach mon va tim kiem da nang (go co dau hay khong dau deu tim duoc)
     const filteredItems = menuItems.filter((item) => {
         const matchType = selectedType === "all" || item.type === selectedType;
         const matchSearch =
@@ -114,15 +140,28 @@ const MenuPage = () => {
         return matchType && matchSearch;
     });
 
+    const getActiveOption = (item) => {
+        const opts = item.effectiveOptions || getDefaultOptions(item.type);
+        return selectedOptions[item._id] || opts[0]?.label || (item.type === "drink" ? "Size M" : "Thường");
+    };
+
+    const handleSelectOption = (itemId, optionLabel) => {
+        setSelectedOptions((prev) => ({
+            ...prev,
+            [itemId]: optionLabel
+        }));
+    };
+
     const handleAdd = (item) => {
-        addToCart(item);
-        setAddedNotice(`Đã thêm [${item.displayName}] vào giỏ hàng!`);
+        const activeOpt = getActiveOption(item);
+        addToCart(item, activeOpt);
+        setAddedNotice(`Đã thêm [${item.displayName} - ${activeOpt}] vào giỏ hàng!`);
         setTimeout(() => setAddedNotice(""), 2000);
     };
 
     return (
         <Container className="py-4">
-            {/* Thông báo thêm món */}
+            {/* Thong bao them mon */}
             {addedNotice && (
                 <Alert
                     variant="success"
@@ -133,7 +172,7 @@ const MenuPage = () => {
                 </Alert>
             )}
 
-            {/* Chọn bàn nếu chưa có */}
+            {/* Chon ban neu chua co */}
             <Card className="mb-4 shadow-sm border-0 bg-white">
                 <Card.Body className="p-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
                     <div>
@@ -161,7 +200,7 @@ const MenuPage = () => {
                 </Card.Body>
             </Card>
 
-            {/* Bộ lọc và Tìm kiếm */}
+            {/* Bo loc va Tim kiem */}
             <Row className="mb-4 g-2">
                 <Col md={6}>
                     <ButtonGroup className="w-100">
@@ -195,7 +234,7 @@ const MenuPage = () => {
                 </Col>
             </Row>
 
-            {/* Danh sách món ăn */}
+            {/* Danh sach mon an */}
             {loading ? (
                 <div className="text-center py-5">
                     <Spinner animation="border" variant="primary" />
@@ -207,51 +246,83 @@ const MenuPage = () => {
                 <p className="text-center text-muted py-5">Không tìm thấy món nào phù hợp!</p>
             ) : (
                 <Row xs={1} sm={2} md={3} lg={4} className="g-4">
-                    {filteredItems.map((item) => (
-                        <Col key={item._id}>
-                            <Card className="h-100 shadow-sm border-0 position-relative">
-                                <Card.Img
-                                    variant="top"
-                                    src={item.image}
-                                    alt={item.displayName}
-                                    onError={(e) => {
-                                        e.target.onerror = null;
-                                        e.target.src = item.type === "food" ? "/images/pho-bo.jpg" : "/images/tra-sua.jpg";
-                                    }}
-                                    style={{ height: 180, objectFit: "cover" }}
-                                />
-                                {!item.isAvailable && (
-                                    <Badge bg="danger" className="position-absolute top-0 end-0 m-2 p-2">
-                                        Tạm Hết Món
-                                    </Badge>
-                                )}
-                                <Card.Body className="d-flex flex-column">
-                                    <div className="d-flex justify-content-between align-items-start mb-1">
-                                        <Card.Title className="fs-6 fw-bold mb-0">{item.displayName}</Card.Title>
-                                        <Badge bg={item.type === "food" ? "info" : "warning"} text="dark">
-                                            {item.type === "food" ? "Món ăn" : "Đồ uống"}
+                    {filteredItems.map((item) => {
+                        const opts = item.effectiveOptions || getDefaultOptions(item.type);
+                        const activeOptionLabel = getActiveOption(item);
+                        const activeOptObj = opts.find((o) => o.label === activeOptionLabel) || opts[0];
+                        const currentPrice = item.price + (activeOptObj ? activeOptObj.priceDelta || 0 : 0);
+
+                        return (
+                            <Col key={item._id}>
+                                <Card className="h-100 shadow-sm border-0 position-relative">
+                                    <Card.Img
+                                        variant="top"
+                                        src={item.image}
+                                        alt={item.displayName}
+                                        onError={(e) => {
+                                            e.target.onerror = null;
+                                            e.target.src = item.type === "food" ? "/images/pho-bo.jpg" : "/images/tra-sua.jpg";
+                                        }}
+                                        style={{ height: 180, objectFit: "cover" }}
+                                    />
+                                    {!item.isAvailable && (
+                                        <Badge bg="danger" className="position-absolute top-0 end-0 m-2 p-2">
+                                            Tạm Hết Món
                                         </Badge>
-                                    </div>
-                                    <Card.Text className="small text-muted mb-2 flex-grow-1" style={{ minHeight: 40 }}>
-                                        {item.displayDescription}
-                                    </Card.Text>
-                                    <div className="d-flex justify-content-between align-items-center mt-auto pt-2 border-top">
-                                        <span className="fw-bold text-danger fs-6">
-                                            {item.price.toLocaleString("vi-VN")} đ
-                                        </span>
-                                        <Button
-                                            variant={item.isAvailable ? "primary" : "secondary"}
-                                            size="sm"
-                                            disabled={!item.isAvailable}
-                                            onClick={() => handleAdd(item)}
-                                        >
-                                            {item.isAvailable ? "+ Thêm vào giỏ" : "Hết hàng"}
-                                        </Button>
-                                    </div>
-                                </Card.Body>
-                            </Card>
-                        </Col>
-                    ))}
+                                    )}
+                                    <Card.Body className="d-flex flex-column">
+                                        <div className="d-flex justify-content-between align-items-start mb-1">
+                                            <Card.Title className="fs-6 fw-bold mb-0">{item.displayName}</Card.Title>
+                                            <Badge bg={item.type === "food" ? "info" : "warning"} text="dark">
+                                                {item.type === "food" ? "Món ăn" : "Đồ uống"}
+                                            </Badge>
+                                        </div>
+                                        <Card.Text className="small text-muted mb-2" style={{ minHeight: 38 }}>
+                                            {item.displayDescription}
+                                        </Card.Text>
+
+                                        {/* Bo nut chon Loai (Thuong/Dac biet) hoac Size (M/L/XL) */}
+                                        <div className="my-2">
+                                            <div className="small text-muted mb-1 fw-semibold">
+                                                {item.type === "drink" ? "Chọn Size:" : "Chọn Khẩu Phần:"}
+                                            </div>
+                                            <ButtonGroup size="sm" className="w-100 flex-wrap">
+                                                {opts.map((opt) => {
+                                                    const isActive = activeOptionLabel === opt.label;
+                                                    return (
+                                                        <Button
+                                                            key={opt.label}
+                                                            variant={isActive ? "primary" : "outline-secondary"}
+                                                            className="py-1 px-1 text-nowrap"
+                                                            style={{ fontSize: "0.75rem" }}
+                                                            onClick={() => handleSelectOption(item._id, opt.label)}
+                                                        >
+                                                            {opt.label}
+                                                            {opt.priceDelta > 0 && ` (+${opt.priceDelta / 1000}k)`}
+                                                        </Button>
+                                                    );
+                                                })}
+                                            </ButtonGroup>
+                                        </div>
+
+                                        <div className="d-flex justify-content-between align-items-center mt-auto pt-2 border-top">
+                                            <span className="fw-bold text-danger fs-6">
+                                                {currentPrice.toLocaleString("vi-VN")} đ
+                                            </span>
+                                            <Button
+                                                variant={item.isAvailable ? "primary" : "secondary"}
+                                                size="sm"
+                                                disabled={!item.isAvailable}
+                                                onClick={() => handleAdd(item)}
+                                            >
+                                                {item.isAvailable ? "+ Thêm vào giỏ" : "Hết hàng"}
+                                            </Button>
+                                        </div>
+                                    </Card.Body>
+                                </Card>
+                            </Col>
+                        );
+                    })}
                 </Row>
             )}
         </Container>

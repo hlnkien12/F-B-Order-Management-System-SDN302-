@@ -33,7 +33,7 @@ const generateOrderCode = async () => {
 
 /**
  * 1. Tao don hang moi (Public: khach vang lai hoac khach da dang nhap)
- * Body: { tableCode, customerName, customerPhone, note, items: [{ menuItemId, quantity }] }
+ * Body: { tableCode, customerName, customerPhone, note, items: [{ menuItemId, quantity, selectedOption }] }
  */
 exports.createOrder = async (req, res) => {
     try {
@@ -67,11 +67,12 @@ exports.createOrder = async (req, res) => {
             return res.status(400).json({ error: "Moi don toi da 30 loai mon!" });
         }
 
-        // 1.4. Gop cac dong trung mon va kiem tra so luong
-        const quantityMap = new Map();
+        // 1.4. Gop cac dong trung ca mon va selectedOption, kiem tra so luong
+        const groupMap = new Map();
         for (const item of items) {
             const id = item && item.menuItemId;
             const qty = Number(item && item.quantity);
+            const opt = (item && item.selectedOption) ? String(item.selectedOption).trim() : "";
 
             if (!mongoose.isValidObjectId(id)) {
                 return res.status(400).json({ error: `Ma mon [${id}] khong hop le!` });
@@ -80,23 +81,25 @@ exports.createOrder = async (req, res) => {
                 return res.status(400).json({ error: "So luong moi mon phai la so nguyen tu 1 den 50!" });
             }
 
-            const newQty = (quantityMap.get(String(id)) || 0) + qty;
-            if (newQty > 50) {
-                return res.status(400).json({ error: "Tong so luong 1 mon khong duoc vuot qua 50!" });
+            const key = `${id}__${opt}`;
+            const existing = groupMap.get(key) || { id: String(id), option: opt, quantity: 0 };
+            existing.quantity += qty;
+            if (existing.quantity > 50) {
+                return res.status(400).json({ error: "Tong so luong 1 mon cung loai khong duoc vuot qua 50!" });
             }
-            quantityMap.set(String(id), newQty);
+            groupMap.set(key, existing);
         }
 
         // 1.5. Lay thong tin mon tu database (1 lan truy van cho tat ca mon)
-        const ids = [...quantityMap.keys()];
-        const menuItems = await MenuItem.find({ _id: { $in: ids }, isDeleted: false });
+        const uniqueIds = [...new Set([...groupMap.values()].map((g) => g.id))];
+        const menuItems = await MenuItem.find({ _id: { $in: uniqueIds }, isDeleted: false });
         const menuMap = new Map(menuItems.map((m) => [String(m._id), m]));
 
         // 1.6. Chot gia va tinh tong tien phia server
         const orderItems = [];
         let totalAmount = 0;
 
-        for (const [id, quantity] of quantityMap) {
+        for (const { id, option, quantity } of groupMap.values()) {
             const menuItem = menuMap.get(id);
             if (!menuItem) {
                 return res.status(400).json({ error: "Co mon khong ton tai hoac da bi xoa khoi thuc don!" });
@@ -105,13 +108,33 @@ exports.createOrder = async (req, res) => {
                 return res.status(400).json({ error: `Mon [${menuItem.name}] hien da het, vui long chon mon khac!` });
             }
 
+            const effectiveOptions = MenuItem.getEffectiveOptions(menuItem);
+            let matchedOption = null;
+
+            if (option) {
+                matchedOption = effectiveOptions.find(
+                    (o) => o.label.toLowerCase() === option.toLowerCase()
+                );
+                if (!matchedOption) {
+                    return res.status(400).json({
+                        error: `Tuy chon [${option}] khong hop le cho mon [${menuItem.name}]!`
+                    });
+                }
+            } else {
+                // Mac dinh lay option dau tien (Thường hoac Size M voi priceDelta = 0)
+                matchedOption = effectiveOptions[0] || { label: "", priceDelta: 0 };
+            }
+
+            const unitPrice = menuItem.price + (matchedOption.priceDelta || 0);
+
             orderItems.push({
                 menuItemId: menuItem._id,
                 name: menuItem.name,
-                price: menuItem.price,
+                selectedOption: matchedOption.label,
+                price: unitPrice,
                 quantity
             });
-            totalAmount += menuItem.price * quantity;
+            totalAmount += unitPrice * quantity;
         }
 
         // 1.7. Luu don
@@ -152,7 +175,7 @@ exports.trackOrder = async (req, res) => {
         }
 
         const order = await Order.findById(id).select(
-            "orderCode tableName items totalAmount status cancelReason note createdAt updatedAt"
+            "orderCode tableName items totalAmount status paymentRequested paymentMethod cancelReason note createdAt updatedAt"
         );
         if (!order) {
             return res.status(404).json({ error: "Khong tim thay don hang!" });
@@ -257,6 +280,9 @@ exports.updateOrderStatus = async (req, res) => {
         }
 
         order.status = status;
+        if (status === "completed" || status === "cancelled") {
+            order.paymentRequested = false;
+        }
         await order.save();
 
         // 5.3. Bao realtime cho nhan vien khac va cho khach dang theo doi don
@@ -264,6 +290,8 @@ exports.updateOrderStatus = async (req, res) => {
             id: order._id,
             orderCode: order.orderCode,
             status: order.status,
+            paymentRequested: order.paymentRequested,
+            paymentMethod: order.paymentMethod,
             cancelReason: order.cancelReason,
             updatedAt: order.updatedAt
         };
@@ -273,6 +301,193 @@ exports.updateOrderStatus = async (req, res) => {
         return res.status(200).json({
             message: `Da chuyen don ${order.orderCode} sang [${STATUS_LABELS[status]}]!`,
             data: order
+        });
+    } catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+};
+
+
+/**
+ * 6. Khach hang tu huy don khi don dang cho quan xac nhan (Public)
+ */
+exports.cancelOrderByCustomer = async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!mongoose.isValidObjectId(id)) {
+            return res.status(400).json({ error: "Ma don khong dung dinh dang!" });
+        }
+
+        const order = await Order.findById(id);
+        if (!order) {
+            return res.status(404).json({ error: "Khong tim thay don hang!" });
+        }
+
+        // Chi cho phep khach tu huy khi don dang pending
+        if (order.status !== "pending") {
+            return res.status(400).json({
+                error: "Quan da tiep nhan va dang chuan bi mon, khong the tu huy don vao luc nay!"
+            });
+        }
+
+        order.status = "cancelled";
+        order.paymentRequested = false;
+        order.cancelReason = "Khach hang tu huy khi dang cho quan xac nhan";
+        await order.save();
+
+        const payload = {
+            id: order._id,
+            orderCode: order.orderCode,
+            status: order.status,
+            paymentRequested: order.paymentRequested,
+            paymentMethod: order.paymentMethod,
+            cancelReason: order.cancelReason,
+            updatedAt: order.updatedAt
+        };
+        emitToStaff("order:updated", payload);
+        emitToOrder(String(order._id), "order:updated", payload);
+
+        return res.status(200).json({
+            message: "Huy don hang thanh cong!",
+            data: order
+        });
+    } catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+};
+
+/**
+ * 7. Tra cuu hang loat don hang cho khach vang lai (Public)
+ * Body: { orderIds: ["id1", "id2"] }
+ */
+exports.getBatchOrdersTrack = async (req, res) => {
+    try {
+        const { orderIds } = req.body || {};
+        if (!Array.isArray(orderIds) || orderIds.length === 0) {
+            return res.status(200).json({ data: [] });
+        }
+        const validIds = orderIds.filter((id) => mongoose.isValidObjectId(id));
+        const orders = await Order.find({ _id: { $in: validIds } })
+            .select(
+                "orderCode tableName items totalAmount status paymentRequested paymentMethod cancelReason note createdAt updatedAt"
+            )
+            .sort({ createdAt: -1 });
+        return res.status(200).json({ data: orders });
+    } catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+};
+
+/**
+ * 8. Khach hang bam Goi Thanh Toan cho cac don tai ban (Public)
+ * Body: { orderIds: ["id1", ...], paymentMethod: "cash" | "transfer" }
+ */
+exports.requestPayment = async (req, res) => {
+    try {
+        const { orderIds, paymentMethod } = req.body || {};
+        if (!Array.isArray(orderIds) || orderIds.length === 0) {
+            return res.status(400).json({ error: "Khong co don hang nao de goi thanh toan!" });
+        }
+
+        const method = paymentMethod === "transfer" ? "transfer" : "cash";
+        const validIds = orderIds.filter((id) => mongoose.isValidObjectId(id));
+
+        const orders = await Order.find({
+            _id: { $in: validIds },
+            status: { $in: ["confirmed", "served"] }
+        });
+
+        if (orders.length === 0) {
+            return res.status(400).json({
+                error: "Chi co the goi thanh toan khi don hang da duoc quan xac nhan!"
+            });
+        }
+
+        let totalBill = 0;
+        const orderCodes = [];
+        let tableName = "";
+
+        for (const ord of orders) {
+            ord.paymentRequested = true;
+            ord.paymentMethod = method;
+            await ord.save();
+
+            totalBill += ord.totalAmount || 0;
+            orderCodes.push(ord.orderCode);
+            if (!tableName) tableName = ord.tableName;
+
+            const payload = {
+                id: ord._id,
+                orderCode: ord.orderCode,
+                status: ord.status,
+                paymentRequested: ord.paymentRequested,
+                paymentMethod: ord.paymentMethod,
+                cancelReason: ord.cancelReason,
+                updatedAt: ord.updatedAt
+            };
+            emitToStaff("order:updated", payload);
+            emitToOrder(String(ord._id), "order:updated", payload);
+        }
+
+        emitToStaff("order:payment_requested", {
+            tableName,
+            orderCodes,
+            totalAmount: totalBill,
+            paymentMethod: method,
+            requestedAt: new Date()
+        });
+
+        return res.status(200).json({
+            message: "Da gui yeu cau thanh toan toi thu ngan!",
+            data: orders
+        });
+    } catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+};
+
+/**
+ * 9. Nhan vien / Admin chot thanh toan dong loat cac don cua ban (Staff/Admin)
+ * Body: { orderIds: ["id1", ...] }
+ */
+exports.settleTableOrders = async (req, res) => {
+    try {
+        const { orderIds } = req.body || {};
+        if (!Array.isArray(orderIds) || orderIds.length === 0) {
+            return res.status(400).json({ error: "Vui long chon danh sach don can chot thanh toan!" });
+        }
+
+        const validIds = orderIds.filter((id) => mongoose.isValidObjectId(id));
+        const orders = await Order.find({
+            _id: { $in: validIds },
+            status: { $in: ["confirmed", "served"] }
+        });
+
+        if (orders.length === 0) {
+            return res.status(400).json({ error: "Khong co don nao o trang thai cho thanh toan!" });
+        }
+
+        for (const ord of orders) {
+            ord.status = "completed";
+            ord.paymentRequested = false;
+            await ord.save();
+
+            const payload = {
+                id: ord._id,
+                orderCode: ord.orderCode,
+                status: ord.status,
+                paymentRequested: ord.paymentRequested,
+                paymentMethod: ord.paymentMethod,
+                cancelReason: ord.cancelReason,
+                updatedAt: ord.updatedAt
+            };
+            emitToStaff("order:updated", payload);
+            emitToOrder(String(ord._id), "order:updated", payload);
+        }
+
+        return res.status(200).json({
+            message: `Da xac nhan thanh toan hoan tat cho ${orders.length} don!`,
+            data: orders
         });
     } catch (err) {
         return res.status(500).json({ error: err.message });

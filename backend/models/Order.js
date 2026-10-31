@@ -12,6 +12,11 @@ const orderItemSchema = new mongoose.Schema(
             type: String,
             required: true
         },
+        selectedOption: {
+            type: String,
+            default: "",
+            trim: true
+        },
         price: {
             type: Number,
             required: true,
@@ -79,8 +84,17 @@ const orderSchema = new mongoose.Schema(
         },
         status: {
             type: String,
-            enum: ["pending", "confirmed", "completed", "cancelled"],
+            enum: ["pending", "confirmed", "served", "completed", "cancelled"],
             default: "pending"
+        },
+        paymentRequested: {
+            type: Boolean,
+            default: false
+        },
+        paymentMethod: {
+            type: String,
+            enum: ["", "cash", "transfer"],
+            default: ""
         },
         cancelReason: {
             type: String,
