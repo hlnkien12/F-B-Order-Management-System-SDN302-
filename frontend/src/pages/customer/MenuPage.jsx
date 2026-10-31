@@ -5,26 +5,36 @@ import axiosClient from "../../api/axiosClient";
 import { useCart } from "../../context/CartContext";
 import { socket } from "../../socket/socket";
 
-const FOOD_IMAGES = ["/images/pho-bo.jpg", "/images/bun-dau.jpg"];
-const DRINK_IMAGES = ["/images/tra-tac.jpg", "/images/tra-sua.jpg"];
+const DISH_IMAGE_MAP = {
+    "pho bo": "/images/pho-bo.jpg",
+    "bun dau": "/images/bun-dau.jpg",
+    "bun cha": "/images/bun-dau.jpg",
+    "com tam": "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500",
+    "banh mi": "https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?w=500",
+    "mi quang": "https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=500",
+    "goi cuon": "https://images.unsplash.com/photo-1534422298391-e4f8c172dddb?w=500",
+    "bo luc lac": "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=500",
+    "com chien": "https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=500",
+    "ca phe sua": "https://images.unsplash.com/photo-1517701604599-bb29b565090c?w=500",
+    "bac xiu": "https://images.unsplash.com/photo-1541167760496-1628856ab772?w=500",
+    "tra tac": "/images/tra-tac.jpg",
+    "tra dao": "/images/tra-tac.jpg",
+    "tra sua": "/images/tra-sua.jpg",
+    "cam": "https://images.unsplash.com/photo-1613478223719-2ab802602423?w=500",
+    "sinh to bo": "https://images.unsplash.com/photo-1638176066666-ffb2f5d222e9?w=500",
+    "matcha": "https://images.unsplash.com/photo-1536256263959-770b48d82b0a?w=500",
+    "chanh tuyet": "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=500"
+};
 
-const resolveMenuImage = (item, idx) => {
-    if (item.image && !item.image.includes("unsplash.com")) {
+const resolveMenuImage = (item) => {
+    const lower = (item.name || "").toLowerCase();
+    for (const [key, url] of Object.entries(DISH_IMAGE_MAP)) {
+        if (lower.includes(key)) return url;
+    }
+    if (item.image && (item.image.startsWith("/images/") || item.image.startsWith("http"))) {
         return item.image;
     }
-    const lower = (item.name || "").toLowerCase();
-    if (lower.includes("pho") || lower.includes("mi ")) return "/images/pho-bo.jpg";
-    if (lower.includes("bun") || lower.includes("goi") || lower.includes("com")) return "/images/bun-dau.jpg";
-    if (lower.includes("tra sua") || lower.includes("matcha") || lower.includes("sinh to") || lower.includes("bac xiu")) {
-        return "/images/tra-sua.jpg";
-    }
-    if (lower.includes("tra dao") || lower.includes("chanh") || lower.includes("cam")) {
-        return "/images/tra-tac.jpg";
-    }
-    if (item.type === "food") {
-        return FOOD_IMAGES[idx % FOOD_IMAGES.length];
-    }
-    return DRINK_IMAGES[idx % DRINK_IMAGES.length];
+    return item.type === "food" ? "/images/pho-bo.jpg" : "/images/tra-sua.jpg";
 };
 
 const MenuPage = () => {
@@ -57,9 +67,9 @@ const MenuPage = () => {
                     axiosClient.get("/menu-items"),
                     axiosClient.get("/tables")
                 ]);
-                const mappedMenu = (menuRes.data || []).map((item, idx) => ({
+                const mappedMenu = (menuRes.data || []).map((item) => ({
                     ...item,
-                    image: resolveMenuImage(item, idx)
+                    image: resolveMenuImage(item)
                 }));
                 setMenuItems(mappedMenu);
                 setTables(tableRes.data || []);
@@ -240,4 +250,3 @@ const MenuPage = () => {
 };
 
 export default MenuPage;
-

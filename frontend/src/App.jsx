@@ -1,7 +1,8 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "./context/AuthContext";
 import { CartProvider } from "./context/CartContext";
 import AppNavbar from "./components/AppNavbar";
+import AdminLayout from "./components/AdminLayout";
 
 // Pages Khach hang
 import MenuPage from "./pages/customer/MenuPage";
@@ -12,6 +13,12 @@ import MyOrdersPage from "./pages/customer/MyOrdersPage";
 // Pages Auth
 import LoginPage from "./pages/auth/LoginPage";
 import RegisterPage from "./pages/auth/RegisterPage";
+
+// Pages Quan tri va Nhan vien (P6)
+import OrdersBoardPage from "./pages/admin/OrdersBoardPage";
+import MenuManagePage from "./pages/admin/MenuManagePage";
+import TablesPage from "./pages/admin/TablesPage";
+import StaffManagePage from "./pages/admin/StaffManagePage";
 
 function App() {
     return (
@@ -32,18 +39,14 @@ function App() {
                                 <Route path="/login" element={<LoginPage />} />
                                 <Route path="/register" element={<RegisterPage />} />
 
-                                {/* Route tam cho Admin se duoc lap day o Giai doan P6 */}
-                                <Route
-                                    path="/admin/*"
-                                    element={
-                                        <div className="container py-5 text-center">
-                                            <h4>Khu Vuc Quan Tri va Bep</h4>
-                                            <p className="text-muted">
-                                                Giai doan P6 se lap day cac trang quan ly don realtime va menu tai day.
-                                            </p>
-                                        </div>
-                                    }
-                                />
+                                {/* Khu vuc Quan Tri & Nhan Vien (P6) */}
+                                <Route path="/admin" element={<AdminLayout />}>
+                                    <Route index element={<Navigate to="/admin/orders" replace />} />
+                                    <Route path="orders" element={<OrdersBoardPage />} />
+                                    <Route path="menu" element={<MenuManagePage />} />
+                                    <Route path="tables" element={<TablesPage />} />
+                                    <Route path="staff" element={<StaffManagePage />} />
+                                </Route>
                             </Routes>
                         </main>
                     </div>

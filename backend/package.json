@@ -7,6 +7,7 @@
         "start": "nodemon server.js",
         "dev": "nodemon server.js",
         "seed": "node seed.js",
+        "update-images": "node update_images.js",
         "test": "node tests/run_tests.js"
     },
     "dependencies": {
