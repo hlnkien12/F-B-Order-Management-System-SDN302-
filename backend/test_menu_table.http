@@ -1,0 +1,132 @@
+### ==============================================================================
+### BO TEST API THUC DON (MENU) VA BAN AN (REST CLIENT VS CODE)
+### ==============================================================================
+@BASE_URL = http://localhost:5000
+
+### 1. Dang nhap Admin de lay Token test quyen quan tri
+# @name loginAdmin
+POST {{BASE_URL}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@shop.com",
+  "password": "admin123"
+}
+
+@adminToken = {{loginAdmin.response.body.data.accessToken}}
+
+
+### 2. Dang nhap Staff de lay Token test quyen nhan vien
+# @name loginStaff
+POST {{BASE_URL}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "staff@shop.com",
+  "password": "staff123"
+}
+
+@staffToken = {{loginStaff.response.body.data.accessToken}}
+
+
+### ==============================================================================
+### PHAN HE 1: THUC DON (MENU ITEMS)
+### ==============================================================================
+
+### 1.1. Lay toan bo thuc don (Public - Khong can token, Ky vong 200 OK)
+GET {{BASE_URL}}/api/menu-items
+
+### 1.2. Loc chi lay Do an (type=food)
+GET {{BASE_URL}}/api/menu-items?type=food
+
+### 1.3. Loc chi lay Do uong (type=drink)
+GET {{BASE_URL}}/api/menu-items?type=drink
+
+### 1.4. Tim kiem mon an theo tu khoa (vi du: "pho")
+GET {{BASE_URL}}/api/menu-items?search=pho
+
+### 1.5. Them mon moi (Chi Admin moi co quyen, Ky vong 201 Created)
+# @name createNewFood
+POST {{BASE_URL}}/api/menu-items
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "Banh Xeo Mien Tay",
+  "price": 45000,
+  "type": "food",
+  "description": "Banh xeo gion rum nhan tom thit gia do, an kem rau rung."
+}
+
+@newFoodId = {{createNewFood.response.body.data._id}}
+
+### 1.6. Thu them mon khi la Staff (Ky vong 403 Forbidden - Staff khong duoc them mon)
+POST {{BASE_URL}}/api/menu-items
+Authorization: Bearer {{staffToken}}
+Content-Type: application/json
+
+{
+  "name": "Mon Cua Staff",
+  "price": 20000,
+  "type": "food"
+}
+
+### 1.7. Nhan vien bat/tat trang thai Con mon / Het mon (Ky vong 200 OK)
+PATCH {{BASE_URL}}/api/menu-items/{{newFoodId}}/availability
+Authorization: Bearer {{staffToken}}
+Content-Type: application/json
+
+{
+  "isAvailable": false
+}
+
+### 1.8. Admin xoa mem mon an (Ky vong 200 OK, isDeleted = true)
+DELETE {{BASE_URL}}/api/menu-items/{{newFoodId}}
+Authorization: Bearer {{adminToken}}
+
+
+### ==============================================================================
+### PHAN HE 2: BAN AN (TABLES)
+### ==============================================================================
+
+### 2.1. Lay toan bo danh sach ban (Public - Ky vong 200 OK)
+GET {{BASE_URL}}/api/tables
+
+### 2.2. Tra cuu ban theo Ma ban QR (vi du: T01 - Ky vong 200 OK)
+GET {{BASE_URL}}/api/tables/code/T01
+
+### 2.3. Admin them ban moi (Ky vong 201 Created)
+# @name createNewTable
+POST {{BASE_URL}}/api/tables
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "code": "T11",
+  "name": "Ban San Thuong 11"
+}
+
+@newTableId = {{createNewTable.response.body.data._id}}
+
+### 2.4. Thu them ban trung ma (Ky vong 409 Conflict)
+POST {{BASE_URL}}/api/tables
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "code": "T11",
+  "name": "Ban Trung Ma"
+}
+
+### 2.5. Admin cap nhat ten ban (Ky vong 200 OK)
+PUT {{BASE_URL}}/api/tables/{{newTableId}}
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "Ban VIP San Thuong 11"
+}
+
+### 2.6. Admin xoa ban (Ky vong 200 OK)
+DELETE {{BASE_URL}}/api/tables/{{newTableId}}
+Authorization: Bearer {{adminToken}}
