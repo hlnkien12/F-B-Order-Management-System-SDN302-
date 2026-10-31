@@ -1,0 +1,137 @@
+### ==============================================================================
+### COLLECTION: Order
+### Thu tu test: Login -> Menu List (lay id mon) -> Order Creation -> ...
+### ==============================================================================
+@BASE_URL = http://localhost:5000
+
+### Ten API: Staff Login (lay token nhan vien)
+# @name staffLogin
+POST {{BASE_URL}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "staff@shop.com",
+  "password": "staff123"
+}
+
+@staffToken = {{staffLogin.response.body.data.accessToken}}
+
+### Ten API: Menu List (lay 2 mon dau tien de dat thu)
+# @name menuList
+GET {{BASE_URL}}/api/menu-items
+
+@item1 = {{menuList.response.body.data[0]._id}}
+@item2 = {{menuList.response.body.data[1]._id}}
+
+### Ten API: Order Creation (khach vang lai, ky vong 201)
+# @name orderCreation
+POST {{BASE_URL}}/api/orders
+Content-Type: application/json
+
+{
+  "tableCode": "T01",
+  "customerName": "Tran Thi Khach",
+  "customerPhone": "0987654321",
+  "note": "It cay",
+  "items": [
+    { "menuItemId": "{{item1}}", "quantity": 2 },
+    { "menuItemId": "{{item2}}", "quantity": 1 },
+    { "menuItemId": "{{item1}}", "quantity": 1 }
+  ]
+}
+
+@orderId = {{orderCreation.response.body.data._id}}
+
+### Ten API: Order Creation Invalid Table (ky vong 400)
+POST {{BASE_URL}}/api/orders
+Content-Type: application/json
+
+{
+  "tableCode": "T99",
+  "customerName": "Khach",
+  "customerPhone": "0987654321",
+  "items": [{ "menuItemId": "{{item1}}", "quantity": 1 }]
+}
+
+### Ten API: Order Creation Invalid Phone (ky vong 400)
+POST {{BASE_URL}}/api/orders
+Content-Type: application/json
+
+{
+  "tableCode": "T01",
+  "customerName": "Khach",
+  "customerPhone": "123",
+  "items": [{ "menuItemId": "{{item1}}", "quantity": 1 }]
+}
+
+### Ten API: Order Tracking (Public, ky vong 200, khong co so dien thoai)
+GET {{BASE_URL}}/api/orders/{{orderId}}/track
+
+### Ten API: Order List (staff, ky vong 200)
+GET {{BASE_URL}}/api/orders
+Authorization: Bearer {{staffToken}}
+
+### Ten API: Pending Order List (staff, loc theo trang thai)
+GET {{BASE_URL}}/api/orders?status=pending
+Authorization: Bearer {{staffToken}}
+
+### Ten API: Order List Without Token (ky vong 401)
+GET {{BASE_URL}}/api/orders
+
+### Ten API: Order Confirmation (pending -> confirmed, ky vong 200)
+PATCH {{BASE_URL}}/api/orders/{{orderId}}/status
+Authorization: Bearer {{staffToken}}
+Content-Type: application/json
+
+{
+  "status": "confirmed"
+}
+
+### Ten API: Order Completion (confirmed -> completed, ky vong 200)
+PATCH {{BASE_URL}}/api/orders/{{orderId}}/status
+Authorization: Bearer {{staffToken}}
+Content-Type: application/json
+
+{
+  "status": "completed"
+}
+
+### Ten API: Order Cancellation After Completion (completed -> cancelled, ky vong 400)
+PATCH {{BASE_URL}}/api/orders/{{orderId}}/status
+Authorization: Bearer {{staffToken}}
+Content-Type: application/json
+
+{
+  "status": "cancelled",
+  "cancelReason": "Khach doi y"
+}
+
+### ==============================================================================
+### COLLECTION: Customer Order (khach co tai khoan)
+### ==============================================================================
+
+### Ten API: Customer Login
+# @name customerLogin
+POST {{BASE_URL}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "khach1@gmail.com",
+  "password": "password123"
+}
+
+@customerToken = {{customerLogin.response.body.data.accessToken}}
+
+### Ten API: Customer Order Creation (khong gui ten va SDT, server tu lay tu tai khoan)
+POST {{BASE_URL}}/api/orders
+Authorization: Bearer {{customerToken}}
+Content-Type: application/json
+
+{
+  "tableCode": "T02",
+  "items": [{ "menuItemId": "{{item2}}", "quantity": 3 }]
+}
+
+### Ten API: Order History (ky vong 200, chi thay don cua minh)
+GET {{BASE_URL}}/api/orders/my
+Authorization: Bearer {{customerToken}}

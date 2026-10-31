@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 const MenuItem = require("../models/MenuItem");
-
+const { emitToAll } = require("../socket");
 /**
  * 1. Lay danh sach thuc don (Public: Khach hang, Nhan vien, Admin)
  * Query ho tro: ?type=food|drink & search=ten_mon
@@ -158,6 +158,9 @@ exports.toggleAvailability = async (req, res) => {
         }
 
         await item.save();
+
+        // Bao cho moi may dang mo thuc don biet mon nay vua doi trang thai
+        emitToAll("menu:updated", { id: item._id, isAvailable: item.isAvailable });
 
         const trangThaiText = item.isAvailable ? "Con mon" : "Het mon";
         return res.status(200).json({
