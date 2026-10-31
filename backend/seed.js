@@ -68,56 +68,56 @@ const seedData = async () => {
                 price: 55000,
                 type: "food",
                 description: "Pho bo truyen thong nuoc dung ham xuong 12 tieng thom ngon.",
-                image: "https://images.unsplash.com/photo-1582878826629-29b7ad1cdc43?w=500"
+                image: "/images/pho-bo.jpg"
             },
             {
-                name: "Bun Cha Ha Noi",
+                name: "Bun Dau Mam Tom Thap Cam",
                 price: 50000,
                 type: "food",
-                description: "Cha nuong than hoa thom lung, kem nem ran gion rum va rau song.",
-                image: "https://images.unsplash.com/photo-1559847844-5315695dadae?w=500"
+                description: "Dau mo ran gion, thit chan gio luoc, cha com, nem ran va doi sun.",
+                image: "/images/bun-dau.jpg"
             },
             {
                 name: "Com Tam Suon Bi Cha",
                 price: 60000,
                 type: "food",
                 description: "Suon nuong mat ong dam vi, cha trung hap thom bui.",
-                image: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=500"
+                image: "/images/bun-dau.jpg"
             },
             {
                 name: "Banh Mi Dac Biet",
                 price: 35000,
                 type: "food",
                 description: "Banh mi pate cot den, thit nguoi, cha lua va sot bami dac trung.",
-                image: "https://images.unsplash.com/photo-1626082927389-6cd097cdc6ec?w=500"
+                image: "/images/pho-bo.jpg"
             },
             {
                 name: "Mi Quang Ga Ta",
                 price: 45000,
                 type: "food",
                 description: "Mi quang soi vang ong, thit ga ta thom ngon kem banh trang me.",
-                image: "https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=500"
+                image: "/images/pho-bo.jpg"
             },
             {
                 name: "Goi Cuon Tom Thit (3 cuon)",
                 price: 40000,
                 type: "food",
                 description: "Tom tuoi thanh ngot, thit luoc cham tuong den xay thom cay.",
-                image: "https://images.unsplash.com/photo-1534422298391-e4f8c172dddb?w=500"
+                image: "/images/bun-dau.jpg"
             },
             {
                 name: "Bo Luc Lac Khoai Tay",
                 price: 85000,
                 type: "food",
                 description: "Thit bo My xao mem mong nuoc, an kem khoai tay chien gion.",
-                image: "https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=500"
+                image: "/images/pho-bo.jpg"
             },
             {
                 name: "Com Chien Hai San",
                 price: 65000,
                 type: "food",
-                description: "Com dao vang giòn, tom muc tuoi sot trung muoi thom ngon.",
-                image: "https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=500"
+                description: "Com dao vang gion, tom muc tuoi sot trung muoi thom ngon.",
+                image: "/images/bun-dau.jpg"
             },
 
             // --- DO UONG (DRINK) ---
@@ -125,57 +125,57 @@ const seedData = async () => {
                 name: "Ca Phe Sua Da",
                 price: 25000,
                 type: "drink",
-                description: "Ca phe Robusta pha phin dam da hoa quyen sua dac Nganh.",
-                image: "https://images.unsplash.com/photo-1517701604599-bb29b565090c?w=500"
+                description: "Ca phe Robusta pha phin dam da hoa quyen sua dac.",
+                image: "/images/tra-sua.jpg"
             },
             {
                 name: "Bac Xiu Da",
                 price: 28000,
                 type: "drink",
                 description: "Huong vi ngot ngao beo ngay danh cho tin do it ca phe.",
-                image: "https://images.unsplash.com/photo-1541167760496-1628856ab772?w=500"
+                image: "/images/tra-sua.jpg"
             },
             {
-                name: "Tra Dao Cam Sa",
+                name: "Tra Tac Mat Ong",
                 price: 35000,
                 type: "drink",
-                description: "Vi tra thanh mat, cam tuoi mong nuoc kem mieng dao gion.",
-                image: "https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=500"
+                description: "Vi tra thanh mat hoa quyen tac tuoi va mat ong rung.",
+                image: "/images/tra-tac.jpg"
             },
             {
                 name: "Tra Sua Tran Chau Duong Den",
                 price: 40000,
                 type: "drink",
                 description: "Tran chau dai gion thom mui mia, sua tuoi thanh trung cao cap.",
-                image: "https://images.unsplash.com/photo-1558857563-b37cf5288219?w=500"
+                image: "/images/tra-sua.jpg"
             },
             {
                 name: "Nuoc Ep Cam Tuoi",
                 price: 35000,
                 type: "drink",
                 description: "Cam sanh vat nguyen chat, bo sung vitamin C doi dao.",
-                image: "https://images.unsplash.com/photo-1613478223719-2ab802602423?w=500"
+                image: "/images/tra-tac.jpg"
             },
             {
                 name: "Sinh To Bo Dac Biet",
                 price: 45000,
                 type: "drink",
                 description: "Bo sap Dak Lak dac deo beo ngay kem sua dac thom ngon.",
-                image: "https://images.unsplash.com/photo-1638176066666-ffb2f5d222e9?w=500"
+                image: "/images/tra-sua.jpg"
             },
             {
                 name: "Matcha Latte Da",
                 price: 42000,
                 type: "drink",
                 description: "Bot tra xanh Nhat Ban cao cap hoa cung sua tuoi thom mat.",
-                image: "https://images.unsplash.com/photo-1536256263959-770b48d82b0a?w=500"
+                image: "/images/tra-sua.jpg"
             },
             {
                 name: "Chanh Tuyet Xay",
                 price: 30000,
                 type: "drink",
                 description: "Da bao tuyet hoa quyen nuoc cot chanh chua ngot sang khoai.",
-                image: "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=500"
+                image: "/images/tra-tac.jpg"
             }
         ];
 

@@ -1,44 +1,55 @@
-import { useEffect, useState } from "react";
-import { Container, Card, Badge, Spinner } from "react-bootstrap";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AuthProvider } from "./context/AuthContext";
+import { CartProvider } from "./context/CartContext";
+import AppNavbar from "./components/AppNavbar";
+
+// Pages Khach hang
+import MenuPage from "./pages/customer/MenuPage";
+import CartPage from "./pages/customer/CartPage";
+import OrderTrackingPage from "./pages/customer/OrderTrackingPage";
+import MyOrdersPage from "./pages/customer/MyOrdersPage";
+
+// Pages Auth
+import LoginPage from "./pages/auth/LoginPage";
+import RegisterPage from "./pages/auth/RegisterPage";
 
 function App() {
-    const [health, setHealth] = useState(null);
-    const [error, setError] = useState("");
-
-    useEffect(() => {
-        fetch("/api/health")
-            .then((res) => res.json())
-            .then((data) => setHealth(data))
-            .catch((err) => setError(err.message));
-    }, []);
-
     return (
-        <Container className="py-5">
-            <Card className="shadow-sm border-0 mx-auto" style={{ maxWidth: 560 }}>
-                <Card.Body className="p-4 text-center">
-                    <h3 className="fw-bold mb-3">He Thong Order Do An va Do Uong</h3>
-                    <p className="text-muted">Khoi tao Giai doan P0 (Vite React + Express 5 + MongoDB)</p>
+        <BrowserRouter>
+            <AuthProvider>
+                <CartProvider>
+                    <div className="min-vh-100 d-flex flex-column bg-light">
+                        <AppNavbar />
+                        <main className="flex-grow-1">
+                            <Routes>
+                                {/* Luong khach hang goi mon */}
+                                <Route path="/" element={<MenuPage />} />
+                                <Route path="/cart" element={<CartPage />} />
+                                <Route path="/track/:orderId" element={<OrderTrackingPage />} />
+                                <Route path="/my-orders" element={<MyOrdersPage />} />
 
-                    {!health && !error && <Spinner animation="border" variant="primary" />}
+                                {/* Luong dang nhap dang ky */}
+                                <Route path="/login" element={<LoginPage />} />
+                                <Route path="/register" element={<RegisterPage />} />
 
-                    {health && (
-                        <div className="mt-3">
-                            <Badge bg="success" className="p-2 fs-6">
-                                [OK] Da ket noi Backend: {health.message}
-                            </Badge>
-                        </div>
-                    )}
-
-                    {error && (
-                        <div className="mt-3">
-                            <Badge bg="danger" className="p-2 fs-6">
-                                [Loi] Chua ket noi duoc Backend: {error}
-                            </Badge>
-                        </div>
-                    )}
-                </Card.Body>
-            </Card>
-        </Container>
+                                {/* Route tam cho Admin se duoc lap day o Giai doan P6 */}
+                                <Route
+                                    path="/admin/*"
+                                    element={
+                                        <div className="container py-5 text-center">
+                                            <h4>Khu Vuc Quan Tri va Bep</h4>
+                                            <p className="text-muted">
+                                                Giai doan P6 se lap day cac trang quan ly don realtime va menu tai day.
+                                            </p>
+                                        </div>
+                                    }
+                                />
+                            </Routes>
+                        </main>
+                    </div>
+                </CartProvider>
+            </AuthProvider>
+        </BrowserRouter>
     );
 }
 
