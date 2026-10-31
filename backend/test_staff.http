@@ -1,0 +1,53 @@
+### ==============================================================================
+### COLLECTION: Staff (Chi danh cho Admin)
+### ==============================================================================
+@BASE_URL = http://localhost:5000
+
+### 1. Dang nhap Admin de lay Token
+# @name adminLogin
+POST {{BASE_URL}}/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@shop.com",
+  "password": "admin123"
+}
+
+@adminToken = {{adminLogin.response.body.data.accessToken}}
+
+
+### 2. Ten API: Staff List (Ky vong 200 OK)
+GET {{BASE_URL}}/api/staff
+Authorization: Bearer {{adminToken}}
+
+
+### 3. Ten API: Staff Creation (Ky vong 201 Created)
+# @name createNewStaff
+POST {{BASE_URL}}/api/staff
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "name": "Tran Van Thu Ngan 2",
+  "email": "staff2@shop.com",
+  "phone": "0981122334",
+  "password": "password123"
+}
+
+@newStaffId = {{createNewStaff.response.body.data.id}}
+
+
+### 4. Ten API: Staff Status Toggle (Khoa tai khoan, Ky vong 200 OK, isActive = false)
+PATCH {{BASE_URL}}/api/staff/{{newStaffId}}/status
+Authorization: Bearer {{adminToken}}
+Content-Type: application/json
+
+{
+  "isActive": false
+}
+
+
+### 5. Ten API: Staff Deletion (Ky vong 200 OK)
+DELETE {{BASE_URL}}/api/staff/{{newStaffId}}
+Authorization: Bearer {{adminToken}}
+

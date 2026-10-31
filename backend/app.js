@@ -8,6 +8,7 @@ const authRoutes = require("./routes/authRoutes");
 const menuRoutes = require("./routes/menuRoutes");
 const tableRoutes = require("./routes/tableRoutes");
 const orderRoutes = require("./routes/orderRoutes");
+const staffRoutes = require("./routes/staffRoutes");
 const app = express();
 
 // 1. Cau hinh CORS cho phep gui kem httpOnly Cookie tu Frontend
@@ -35,6 +36,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/menu-items", menuRoutes);
 app.use("/api/tables", tableRoutes);
 app.use("/api/orders", orderRoutes);
+app.use("/api/staff", staffRoutes);
 
 // 5. Bat loi 404 cho moi duong dan khong ton tai
 app.use((req, res) => {
