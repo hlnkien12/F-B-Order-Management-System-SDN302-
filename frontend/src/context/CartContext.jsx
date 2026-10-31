@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect } from "react";
+import { toVietnamese } from "../utils/vietnameseDictionary";
 
 const CartContext = createContext();
 
@@ -41,7 +42,7 @@ export const CartProvider = ({ children }) => {
                 ...prev,
                 {
                     menuItemId: item._id,
-                    name: item.name,
+                    name: toVietnamese(item.name),
                     price: item.price,
                     image: item.image,
                     quantity: 1
@@ -102,4 +103,3 @@ export const CartProvider = ({ children }) => {
 };
 
 export const useCart = () => useContext(CartContext);
-

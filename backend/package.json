@@ -8,7 +8,8 @@
         "dev": "nodemon server.js",
         "seed": "node seed.js",
         "update-images": "node update_images.js",
-        "test": "node tests/run_tests.js"
+        "update-vietnamese": "node update_vietnamese.js",
+        "test": "node tests/test_p4_runner.js"
     },
     "dependencies": {
         "bcryptjs": "^2.4.3",

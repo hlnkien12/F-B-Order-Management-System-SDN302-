@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useCart } from "../../context/CartContext";
 import { useAuth } from "../../context/AuthContext";
 import axiosClient from "../../api/axiosClient";
+import { toVietnamese } from "../../utils/vietnameseDictionary";
 
 const CartPage = () => {
     const { cartItems, tableCode, setTableCode, updateQuantity, removeFromCart, clearCart, totalAmount } = useCart();
@@ -17,7 +18,7 @@ const CartPage = () => {
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
 
-    // Tu dong dien thong tin neu da dang nhap
+    // Tự động điền thông tin nếu đã đăng nhập
     useEffect(() => {
         if (user) {
             if (!customerName) setCustomerName(user.name || "");
@@ -30,20 +31,20 @@ const CartPage = () => {
         setError("");
 
         if (!tableCode) {
-            setError("Vui long chon ban truoc khi gui don!");
+            setError("Vui lòng chọn bàn trước khi gửi đơn!");
             return;
         }
         if (cartItems.length === 0) {
-            setError("Gio hang dang trong!");
+            setError("Giỏ hàng đang trống!");
             return;
         }
         if (!customerName.trim()) {
-            setError("Vui long nhap ho ten!");
+            setError("Vui lòng nhập họ tên!");
             return;
         }
         const phoneRegex = /^0[0-9]{9}$/;
         if (!phoneRegex.test(customerPhone.trim())) {
-            setError("So dien thoai phai du 10 chu so va bat dau bang so 0!");
+            setError("Số điện thoại phải đủ 10 chữ số và bắt đầu bằng số 0!");
             return;
         }
 
@@ -63,11 +64,11 @@ const CartPage = () => {
             const res = await axiosClient.post("/orders", payload);
             const createdOrder = res.data;
 
-            // Xoa gio hang va chuyen sang trang theo doi don
+            // Xóa giỏ hàng và chuyển sang trang theo dõi đơn
             clearCart();
             navigate(`/track/${createdOrder._id}`);
         } catch (err) {
-            setError(typeof err === "string" ? err : "Gui don that bai!");
+            setError(typeof err === "string" ? err : "Gửi đơn thất bại!");
         } finally {
             setSubmitting(false);
         }
@@ -76,10 +77,10 @@ const CartPage = () => {
     if (cartItems.length === 0) {
         return (
             <Container className="py-5 text-center">
-                <h4 className="fw-bold mb-3">Gio hang cua ban dang trong</h4>
-                <p className="text-muted">Hay chon nhung mon an va do uong thom ngon tu thuc don nhe!</p>
+                <h4 className="fw-bold mb-3">Giỏ hàng của bạn đang trống</h4>
+                <p className="text-muted">Hãy chọn những món ăn và đồ uống thơm ngon từ thực đơn nhé!</p>
                 <Button as={Link} to="/" variant="primary">
-                    Xem Thuc Don
+                    Xem Thực Đơn
                 </Button>
             </Container>
         );
@@ -87,24 +88,24 @@ const CartPage = () => {
 
     return (
         <Container className="py-4">
-            <h3 className="fw-bold mb-4">Gio Hang Cua Ban</h3>
+            <h3 className="fw-bold mb-4">Giỏ Hàng Của Bạn</h3>
 
             {error && <Alert variant="danger">{error}</Alert>}
 
             <Row className="g-4">
-                {/* Danh sach mon */}
+                {/* Danh sách món */}
                 <Col lg={7}>
                     <Card className="shadow-sm border-0">
                         <Card.Body className="p-0">
                             <Table responsive className="align-middle mb-0">
                                 <thead className="table-light">
                                     <tr>
-                                        <th>Mon</th>
-                                        <th className="text-center">Gia</th>
+                                        <th>Món</th>
+                                        <th className="text-center">Giá</th>
                                         <th className="text-center" style={{ width: 140 }}>
-                                            So Luong
+                                            Số Lượng
                                         </th>
-                                        <th className="text-end">Thanh Tien</th>
+                                        <th className="text-end">Thành Tiền</th>
                                         <th></th>
                                     </tr>
                                 </thead>
@@ -127,11 +128,11 @@ const CartPage = () => {
                                                             borderRadius: 6
                                                         }}
                                                     />
-                                                    <span className="fw-semibold">{item.name}</span>
+                                                    <span className="fw-semibold">{toVietnamese(item.name)}</span>
                                                 </div>
                                             </td>
                                             <td className="text-center small">
-                                                {item.price.toLocaleString("vi-VN")} d
+                                                {item.price.toLocaleString("vi-VN")} đ
                                             </td>
                                             <td className="text-center">
                                                 <div className="d-flex align-items-center justify-content-center gap-1">
@@ -155,7 +156,7 @@ const CartPage = () => {
                                                 </div>
                                             </td>
                                             <td className="text-end fw-bold text-danger">
-                                                {(item.price * item.quantity).toLocaleString("vi-VN")} d
+                                                {(item.price * item.quantity).toLocaleString("vi-VN")} đ
                                             </td>
                                             <td className="text-center">
                                                 <Button
@@ -164,7 +165,7 @@ const CartPage = () => {
                                                     className="text-danger p-0"
                                                     onClick={() => removeFromCart(item.menuItemId)}
                                                 >
-                                                    Xoa
+                                                    Xóa
                                                 </Button>
                                             </td>
                                         </tr>
@@ -175,18 +176,18 @@ const CartPage = () => {
                     </Card>
                 </Col>
 
-                {/* Thong tin dat don */}
+                {/* Thông tin đặt đơn */}
                 <Col lg={5}>
                     <Card className="shadow-sm border-0">
                         <Card.Body className="p-4">
-                            <h5 className="fw-bold mb-3">Thong Tin Goi Mon</h5>
+                            <h5 className="fw-bold mb-3">Thông Tin Gọi Món</h5>
 
-                            <Form onSubmit={handleSubmitOrder}>
+                            <Form onSubmit={handleSubmitOrder} autoComplete="off">
                                 <Form.Group className="mb-3">
-                                    <Form.Label>Ban phuc vu (*)</Form.Label>
+                                    <Form.Label>Bàn phục vụ (*)</Form.Label>
                                     <Form.Control
                                         type="text"
-                                        placeholder="Vi du: T01"
+                                        placeholder="Ví dụ: T01"
                                         value={tableCode}
                                         onChange={(e) => setTableCode(e.target.value.toUpperCase())}
                                         required
@@ -194,10 +195,10 @@ const CartPage = () => {
                                 </Form.Group>
 
                                 <Form.Group className="mb-3">
-                                    <Form.Label>Ho ten nguoi dat (*)</Form.Label>
+                                    <Form.Label>Họ tên người đặt (*)</Form.Label>
                                     <Form.Control
                                         type="text"
-                                        placeholder="Nhap ho va ten cua ban"
+                                        placeholder="Nhập họ và tên của bạn"
                                         value={customerName}
                                         onChange={(e) => setCustomerName(e.target.value)}
                                         required
@@ -205,10 +206,10 @@ const CartPage = () => {
                                 </Form.Group>
 
                                 <Form.Group className="mb-3">
-                                    <Form.Label>So dien thoai (*)</Form.Label>
+                                    <Form.Label>Số điện thoại (*)</Form.Label>
                                     <Form.Control
                                         type="tel"
-                                        placeholder="Vi du: 0912345678"
+                                        placeholder="Ví dụ: 0912345678"
                                         value={customerPhone}
                                         onChange={(e) => setCustomerPhone(e.target.value)}
                                         required
@@ -216,20 +217,20 @@ const CartPage = () => {
                                 </Form.Group>
 
                                 <Form.Group className="mb-3">
-                                    <Form.Label>Ghi chu mon an</Form.Label>
+                                    <Form.Label>Ghi chú món ăn</Form.Label>
                                     <Form.Control
                                         as="textarea"
                                         rows={2}
-                                        placeholder="Vi du: It cay, mang do uong truoc..."
+                                        placeholder="Ví dụ: Ít cay, mang đồ uống trước..."
                                         value={note}
                                         onChange={(e) => setNote(e.target.value)}
                                     />
                                 </Form.Group>
 
                                 <div className="d-flex justify-content-between align-items-center my-3 pt-3 border-top">
-                                    <span className="fs-5">Tong thanh toan:</span>
+                                    <span className="fs-5">Tổng thanh toán:</span>
                                     <strong className="fs-4 text-danger">
-                                        {totalAmount.toLocaleString("vi-VN")} d
+                                        {totalAmount.toLocaleString("vi-VN")} đ
                                     </strong>
                                 </div>
 
@@ -243,10 +244,10 @@ const CartPage = () => {
                                     {submitting ? (
                                         <>
                                             <Spinner animation="border" size="sm" className="me-2" />
-                                            Dang gui don...
+                                            Đang gửi đơn...
                                         </>
                                     ) : (
-                                        "Xac Nhan Goi Mon"
+                                        "Xác Nhận Gọi Món"
                                     )}
                                 </Button>
                             </Form>
@@ -259,4 +260,3 @@ const CartPage = () => {
 };
 
 export default CartPage;
-

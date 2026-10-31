@@ -21,11 +21,11 @@ const RegisterPage = () => {
 
         const phoneRegex = /^0[0-9]{9}$/;
         if (!phoneRegex.test(phone.trim())) {
-            setError("So dien thoai phai du 10 chu so va bat dau bang so 0!");
+            setError("Số điện thoại phải đủ 10 chữ số và bắt đầu bằng số 0!");
             return;
         }
         if (password.length < 6) {
-            setError("Mat khau phai co it nhat 6 ky tu!");
+            setError("Mật khẩu phải có ít nhất 6 ký tự!");
             return;
         }
 
@@ -39,7 +39,7 @@ const RegisterPage = () => {
             });
             navigate("/login");
         } catch (err) {
-            setError(typeof err === "string" ? err : "Dang ky that bai!");
+            setError(typeof err === "string" ? err : "Đăng ký thất bại!");
         } finally {
             setLoading(false);
         }
@@ -49,18 +49,36 @@ const RegisterPage = () => {
         <Container className="py-5" style={{ maxWidth: 440 }}>
             <Card className="shadow-sm border-0">
                 <Card.Body className="p-4">
-                    <h4 className="fw-bold text-center mb-3">Dang Ky Tai Khoan</h4>
+                    <h4 className="fw-bold text-center mb-3">Đăng Ký Tài Khoản</h4>
 
                     {error && <Alert variant="danger">{error}</Alert>}
 
-                    <Form onSubmit={handleSubmit}>
+                    <Form onSubmit={handleSubmit} autoComplete="off">
+                        {/* Truong an ngan chan trinh duyet tu dong dien (anti-autofill) */}
+                        <input
+                            type="text"
+                            name="fake_user_reg_prevent_autofill"
+                            style={{ display: "none" }}
+                            tabIndex="-1"
+                            autoComplete="off"
+                        />
+                        <input
+                            type="password"
+                            name="fake_password_reg_prevent_autofill"
+                            style={{ display: "none" }}
+                            tabIndex="-1"
+                            autoComplete="new-password"
+                        />
+
                         <Form.Group className="mb-3">
-                            <Form.Label>Ho ten (*)</Form.Label>
+                            <Form.Label>Họ tên (*)</Form.Label>
                             <Form.Control
                                 type="text"
-                                placeholder="Nguyen Van A"
+                                name="register_user_name"
+                                placeholder="Nguyễn Văn A"
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
+                                autoComplete="off"
                                 required
                             />
                         </Form.Group>
@@ -68,32 +86,38 @@ const RegisterPage = () => {
                         <Form.Group className="mb-3">
                             <Form.Label>Email (*)</Form.Label>
                             <Form.Control
-                                type="email"
+                                type="text"
+                                name="register_user_email"
                                 placeholder="email@example.com"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
+                                autoComplete="off"
                                 required
                             />
                         </Form.Group>
 
                         <Form.Group className="mb-3">
-                            <Form.Label>So dien thoai (*)</Form.Label>
+                            <Form.Label>Số điện thoại (*)</Form.Label>
                             <Form.Control
                                 type="tel"
+                                name="register_user_phone"
                                 placeholder="0912345678"
                                 value={phone}
                                 onChange={(e) => setPhone(e.target.value)}
+                                autoComplete="off"
                                 required
                             />
                         </Form.Group>
 
                         <Form.Group className="mb-3">
-                            <Form.Label>Mat khau (*)</Form.Label>
+                            <Form.Label>Mật khẩu (*)</Form.Label>
                             <Form.Control
                                 type="password"
-                                placeholder="It nhat 6 ky tu"
+                                name="register_user_password"
+                                placeholder="Ít nhất 6 ký tự"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
+                                autoComplete="new-password"
                                 required
                             />
                         </Form.Group>
@@ -104,11 +128,12 @@ const RegisterPage = () => {
                             className="w-100 fw-bold mb-3"
                             disabled={loading}
                         >
-                            {loading ? <Spinner animation="border" size="sm" /> : "Tao Tai Khoan"}
+                            {loading ? <Spinner animation="border" size="sm" /> : "Đăng Ký"}
                         </Button>
 
                         <div className="text-center small text-muted">
-                            Da co tai khoan? <Link to="/login">Dang nhap</Link>
+                            Đã có tài khoản?{" "}
+                            <Link to="/login">Đăng nhập ngay</Link>
                         </div>
                     </Form>
                 </Card.Body>
@@ -118,4 +143,3 @@ const RegisterPage = () => {
 };
 
 export default RegisterPage;
-

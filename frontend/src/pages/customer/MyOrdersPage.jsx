@@ -2,12 +2,13 @@ import { useEffect, useState } from "react";
 import { Container, Row, Col, Card, Badge, Button, Spinner, Alert } from "react-bootstrap";
 import { Link } from "react-router-dom";
 import axiosClient from "../../api/axiosClient";
+import { toVietnamese } from "../../utils/vietnameseDictionary";
 
 const STATUS_TEXT = {
-    pending: "Cho xac nhan",
-    confirmed: "Dang chuan bi",
-    completed: "Hoan thanh",
-    cancelled: "Da huy"
+    pending: "Chờ xác nhận",
+    confirmed: "Đang chuẩn bị",
+    completed: "Hoàn thành",
+    cancelled: "Đã hủy"
 };
 
 const MyOrdersPage = () => {
@@ -22,7 +23,7 @@ const MyOrdersPage = () => {
                 const res = await axiosClient.get("/orders/my");
                 setOrders(res.data || []);
             } catch (err) {
-                setError(typeof err === "string" ? err : "Khong the lay lich su don!");
+                setError(typeof err === "string" ? err : "Không thể lấy lịch sử đơn hàng!");
             } finally {
                 setLoading(false);
             }
@@ -32,7 +33,7 @@ const MyOrdersPage = () => {
 
     return (
         <Container className="py-4">
-            <h3 className="fw-bold mb-4">Lich Su Don Hang Cua Ban</h3>
+            <h3 className="fw-bold mb-4">Lịch Sử Đơn Hàng Của Bạn</h3>
 
             {loading ? (
                 <div className="text-center py-5">
@@ -42,10 +43,10 @@ const MyOrdersPage = () => {
                 <Alert variant="danger">{error}</Alert>
             ) : orders.length === 0 ? (
                 <Card className="text-center p-5 border-0 shadow-sm">
-                    <p className="text-muted">Ban chua co don hang nao.</p>
+                    <p className="text-muted">Bạn chưa có đơn hàng nào.</p>
                     <div>
                         <Button as={Link} to="/" variant="primary">
-                            Xem Thuc Don
+                            Xem Thực Đơn
                         </Button>
                     </div>
                 </Card>
@@ -73,14 +74,14 @@ const MyOrdersPage = () => {
                                         </Badge>
                                     </div>
                                     <div className="small text-muted mb-2">
-                                        {ord.tableName} - {new Date(ord.createdAt).toLocaleString("vi-VN")}
+                                        {toVietnamese(ord.tableName)} - {new Date(ord.createdAt).toLocaleString("vi-VN")}
                                     </div>
                                     <div className="small mb-3">
-                                        {ord.items.map((i) => `${i.name} (x${i.quantity})`).join(", ")}
+                                        {ord.items.map((i) => `${toVietnamese(i.name)} (x${i.quantity})`).join(", ")}
                                     </div>
                                     <div className="d-flex justify-content-between align-items-center pt-2 border-top">
                                         <span className="fw-bold text-danger">
-                                            {ord.totalAmount.toLocaleString("vi-VN")} d
+                                            {ord.totalAmount.toLocaleString("vi-VN")} đ
                                         </span>
                                         <Button
                                             as={Link}
@@ -88,7 +89,7 @@ const MyOrdersPage = () => {
                                             size="sm"
                                             variant="outline-primary"
                                         >
-                                            Theo Doi
+                                            Theo Dõi
                                         </Button>
                                     </div>
                                 </Card.Body>
@@ -102,4 +103,3 @@ const MyOrdersPage = () => {
 };
 
 export default MyOrdersPage;
-

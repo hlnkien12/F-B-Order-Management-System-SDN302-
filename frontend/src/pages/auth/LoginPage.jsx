@@ -18,14 +18,13 @@ const LoginPage = () => {
         setLoading(true);
         try {
             const userData = await login(email.trim(), password);
-            // Neu la admin hoac staff thi chuyen sang trang quan ly, con lai ve thuc don
             if (["admin", "staff"].includes(userData.role)) {
                 navigate("/admin/orders");
             } else {
                 navigate("/");
             }
         } catch (err) {
-            setError(typeof err === "string" ? err : "Dang nhap that bai!");
+            setError(typeof err === "string" ? err : "Đăng nhập thất bại!");
         } finally {
             setLoading(false);
         }
@@ -35,29 +34,51 @@ const LoginPage = () => {
         <Container className="py-5" style={{ maxWidth: 440 }}>
             <Card className="shadow-sm border-0">
                 <Card.Body className="p-4">
-                    <h4 className="fw-bold text-center mb-3">Dang Nhap</h4>
+                    <h4 className="fw-bold text-center mb-3">Đăng Nhập</h4>
 
                     {error && <Alert variant="danger">{error}</Alert>}
 
-                    <Form onSubmit={handleSubmit}>
+                    <Form onSubmit={handleSubmit} autoComplete="off">
+                        {/* Truong an ngan chan trinh duyet tu dong dien (anti-autofill) */}
+                        <input
+                            type="text"
+                            name="fake_user_prevent_autofill"
+                            style={{ display: "none" }}
+                            tabIndex="-1"
+                            autoComplete="off"
+                        />
+                        <input
+                            type="password"
+                            name="fake_password_prevent_autofill"
+                            style={{ display: "none" }}
+                            tabIndex="-1"
+                            autoComplete="new-password"
+                        />
+
                         <Form.Group className="mb-3">
                             <Form.Label>Email</Form.Label>
                             <Form.Control
-                                type="email"
-                                placeholder="Vi du: admin@shop.com"
+                                type="text"
+                                name="login_account_email"
+                                placeholder="Ví dụ: admin@shop.com"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
+                                autoComplete="off"
+                                autoCorrect="off"
+                                spellCheck={false}
                                 required
                             />
                         </Form.Group>
 
                         <Form.Group className="mb-3">
-                            <Form.Label>Mat khau</Form.Label>
+                            <Form.Label>Mật khẩu</Form.Label>
                             <Form.Control
                                 type="password"
-                                placeholder="Nhap mat khau"
+                                name="login_account_password"
+                                placeholder="Nhập mật khẩu"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
+                                autoComplete="new-password"
                                 required
                             />
                         </Form.Group>
@@ -68,11 +89,12 @@ const LoginPage = () => {
                             className="w-100 fw-bold mb-3"
                             disabled={loading}
                         >
-                            {loading ? <Spinner animation="border" size="sm" /> : "Dang Nhap"}
+                            {loading ? <Spinner animation="border" size="sm" /> : "Đăng Nhập"}
                         </Button>
 
                         <div className="text-center small text-muted">
-                            Chua co tai khoan? <Link to="/register">Dang ky ngay</Link>
+                            Chưa có tài khoản?{" "}
+                            <Link to="/register">Đăng ký ngay</Link>
                         </div>
                     </Form>
                 </Card.Body>
@@ -82,4 +104,3 @@ const LoginPage = () => {
 };
 
 export default LoginPage;
-

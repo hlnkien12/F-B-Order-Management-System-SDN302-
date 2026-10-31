@@ -9,7 +9,7 @@ const AdminLayout = () => {
         return (
             <Container className="py-5 text-center">
                 <Spinner animation="border" variant="primary" />
-                <p className="mt-2 text-muted">Dang kiem tra quyen truy cap...</p>
+                <p className="mt-2 text-muted">Đang kiểm tra quyền truy cập...</p>
             </Container>
         );
     }
@@ -22,13 +22,13 @@ const AdminLayout = () => {
         return (
             <Container className="py-5 text-center" style={{ maxWidth: 520 }}>
                 <Alert variant="danger">
-                    <h5 className="fw-bold">Khong Co Quyen Truy Cap</h5>
+                    <h5 className="fw-bold">Không Có Quyền Truy Cập</h5>
                     <p className="mb-0">
-                        Khu vuc nay chi danh cho Nhan vien (Staff) va Quan tri vien (Admin).
+                        Khu vực này chỉ dành cho Nhân viên (Staff) và Quản trị viên (Admin).
                     </p>
                 </Alert>
                 <Button as={Link} to="/" variant="primary">
-                    Quay Ve Thuc Don
+                    Quay Về Thực Đơn
                 </Button>
             </Container>
         );
@@ -41,13 +41,13 @@ const AdminLayout = () => {
                     <Nav variant="pills" className="gap-2 flex-wrap">
                         <Nav.Item>
                             <Nav.Link as={NavLink} to="/admin/orders" className="fw-semibold">
-                                Bang Don Hang
+                                Bảng Đơn Hàng
                             </Nav.Link>
                         </Nav.Item>
 
                         <Nav.Item>
                             <Nav.Link as={NavLink} to="/admin/menu" className="fw-semibold">
-                                Quan Ly Thuc Don
+                                Quản Lý Thực Đơn
                             </Nav.Link>
                         </Nav.Item>
 
@@ -55,13 +55,13 @@ const AdminLayout = () => {
                             <>
                                 <Nav.Item>
                                     <Nav.Link as={NavLink} to="/admin/tables" className="fw-semibold">
-                                        Ban An va Ma QR
+                                        Bàn Ăn & Mã QR
                                     </Nav.Link>
                                 </Nav.Item>
 
                                 <Nav.Item>
                                     <Nav.Link as={NavLink} to="/admin/staff" className="fw-semibold">
-                                        Quan Ly Nhan Vien
+                                        Quản Lý Nhân Viên
                                     </Nav.Link>
                                 </Nav.Item>
                             </>
@@ -76,4 +76,3 @@ const AdminLayout = () => {
 };
 
 export default AdminLayout;
-

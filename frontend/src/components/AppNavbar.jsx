@@ -22,7 +22,7 @@ const AppNavbar = () => {
 
                 {tableCode && (
                     <Badge bg="warning" text="dark" className="me-auto ms-2 px-2 py-1 fs-6">
-                        Ban: {tableCode}
+                        Bàn: {tableCode}
                     </Badge>
                 )}
 
@@ -30,11 +30,11 @@ const AppNavbar = () => {
                 <Navbar.Collapse id="main-nav">
                     <Nav className="ms-auto align-items-lg-center gap-2">
                         <Nav.Link as={Link} to="/">
-                            Thuc Don
+                            Thực Đơn
                         </Nav.Link>
 
                         <Nav.Link as={Link} to="/cart" className="position-relative me-2">
-                            Gio Hang
+                            Giỏ Hàng
                             {totalCount > 0 && (
                                 <Badge bg="danger" pill className="ms-1">
                                     {totalCount}
@@ -45,7 +45,7 @@ const AppNavbar = () => {
                         {user ? (
                             <>
                                 <Nav.Link as={Link} to="/my-orders">
-                                    Don Cua Toi
+                                    Đơn Của Tôi
                                 </Nav.Link>
 
                                 {["staff", "admin"].includes(user.role) && (
@@ -56,25 +56,25 @@ const AppNavbar = () => {
                                         size="sm"
                                         className="fw-bold"
                                     >
-                                        Trang Quan Ly
+                                        Trang Quản Lý
                                     </Button>
                                 )}
 
                                 <span className="text-light ms-2 small">
-                                    Xin chao, <strong>{user.name}</strong> ({user.role})
+                                    Xin chào, <strong>{user.name}</strong> ({user.role})
                                 </span>
 
                                 <Button variant="outline-light" size="sm" onClick={handleLogout}>
-                                    Dang Xuat
+                                    Đăng Xuất
                                 </Button>
                             </>
                         ) : (
                             <>
                                 <Button as={Link} to="/login" variant="outline-light" size="sm">
-                                    Dang Nhap
+                                    Đăng Nhập
                                 </Button>
                                 <Button as={Link} to="/register" variant="primary" size="sm">
-                                    Dang Ky
+                                    Đăng Ký
                                 </Button>
                             </>
                         )}
@@ -86,4 +86,3 @@ const AppNavbar = () => {
 };
 
 export default AppNavbar;
-

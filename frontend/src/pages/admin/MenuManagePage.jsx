@@ -15,6 +15,7 @@ import {
 import axiosClient from "../../api/axiosClient";
 import { useAuth } from "../../context/AuthContext";
 import { socket } from "../../socket/socket";
+import { toVietnamese, matchVietnameseSearch } from "../../utils/vietnameseDictionary";
 
 const DISH_IMAGE_MAP = {
     "pho bo": "/images/pho-bo.jpg",
@@ -60,7 +61,7 @@ const MenuManagePage = () => {
     const [filterType, setFilterType] = useState("all");
     const [search, setSearch] = useState("");
 
-    // State cho Modal Them / Sua mon
+    // State cho Modal Thêm / Sửa món
     const [showModal, setShowModal] = useState(false);
     const [editingItem, setEditingItem] = useState(null);
     const [formData, setFormData] = useState({
@@ -79,11 +80,13 @@ const MenuManagePage = () => {
             const res = await axiosClient.get("/menu-items");
             const mapped = (res.data || []).map((item) => ({
                 ...item,
+                displayName: toVietnamese(item.name),
+                displayDescription: toVietnamese(item.description),
                 image: resolveMenuImage(item)
             }));
             setItems(mapped);
         } catch (err) {
-            setError(typeof err === "string" ? err : "Khong the tai danh sach thuc don!");
+            setError(typeof err === "string" ? err : "Không thể tải danh sách thực đơn!");
         } finally {
             setLoading(false);
         }
@@ -93,7 +96,7 @@ const MenuManagePage = () => {
         fetchMenu();
     }, []);
 
-    // Lang nghe Socket cap nhat trang thai mon
+    // Lắng nghe Socket cập nhật trạng thái món
     useEffect(() => {
         const handleMenuUpdated = (data) => {
             setItems((prev) =>
@@ -115,7 +118,7 @@ const MenuManagePage = () => {
         setTimeout(() => setSuccessMsg(""), 3000);
     };
 
-    // 1. Bat / Tat con mon hay het mon (Staff & Admin)
+    // 1. Bật / Tắt còn món hay hết món (Staff & Admin)
     const handleToggleAvailability = async (item) => {
         try {
             setError("");
@@ -129,11 +132,11 @@ const MenuManagePage = () => {
             );
             showNotice(res.message);
         } catch (err) {
-            setError(typeof err === "string" ? err : "Doi trang thai mon that bai!");
+            setError(typeof err === "string" ? err : "Đổi trạng thái món thất bại!");
         }
     };
 
-    // 2. Mo Modal Them moi
+    // 2. Mở Modal Thêm mới
     const handleOpenAdd = () => {
         setEditingItem(null);
         setFormData({
@@ -146,20 +149,20 @@ const MenuManagePage = () => {
         setShowModal(true);
     };
 
-    // 3. Mo Modal Sua mon
+    // 3. Mở Modal Sửa món
     const handleOpenEdit = (item) => {
         setEditingItem(item);
         setFormData({
-            name: item.name,
+            name: item.displayName || item.name,
             price: String(item.price),
             type: item.type,
             image: item.image || "/images/pho-bo.jpg",
-            description: item.description || ""
+            description: item.displayDescription || item.description || ""
         });
         setShowModal(true);
     };
 
-    // 4. Luu Them / Sua (Chi Admin)
+    // 4. Lưu Thêm / Sửa (Chỉ Admin)
     const handleSaveItem = async (e) => {
         e.preventDefault();
         setError("");
@@ -175,51 +178,65 @@ const MenuManagePage = () => {
 
             if (editingItem) {
                 const res = await axiosClient.put(`/menu-items/${editingItem._id}`, payload);
+                const updated = {
+                    ...res.data,
+                    displayName: toVietnamese(res.data.name),
+                    displayDescription: toVietnamese(res.data.description),
+                    image: resolveMenuImage(res.data)
+                };
                 setItems((prev) =>
-                    prev.map((i) => (i._id === editingItem._id ? res.data : i))
+                    prev.map((i) => (i._id === editingItem._id ? updated : i))
                 );
-                showNotice("Cap nhat mon thanh cong!");
+                showNotice("Cập nhật món thành công!");
             } else {
                 const res = await axiosClient.post("/menu-items", payload);
-                setItems((prev) => [res.data, ...prev]);
-                showNotice("Them mon moi thanh cong!");
+                const created = {
+                    ...res.data,
+                    displayName: toVietnamese(res.data.name),
+                    displayDescription: toVietnamese(res.data.description),
+                    image: resolveMenuImage(res.data)
+                };
+                setItems((prev) => [created, ...prev]);
+                showNotice("Thêm món mới thành công!");
             }
             setShowModal(false);
         } catch (err) {
-            setError(typeof err === "string" ? err : "Luu thong tin mon that bai!");
+            setError(typeof err === "string" ? err : "Lưu thông tin món thất bại!");
         } finally {
             setSaving(false);
         }
     };
 
-    // 5. Xoa mem mon (Chi Admin)
+    // 5. Xóa mềm món (Chỉ Admin)
     const handleDeleteItem = async (item) => {
-        if (!window.confirm(`Ban co chac chan muon xoa mon [${item.name}] khoi thuc don?`)) {
+        if (!window.confirm(`Bạn có chắc chắn muốn xóa món [${item.displayName}] khỏi thực đơn?`)) {
             return;
         }
         try {
             setError("");
             await axiosClient.delete(`/menu-items/${item._id}`);
             setItems((prev) => prev.filter((i) => i._id !== item._id));
-            showNotice(`Da xoa mon [${item.name}] thanh cong!`);
+            showNotice(`Đã xóa món [${item.displayName}] thành công!`);
         } catch (err) {
-            setError(typeof err === "string" ? err : "Xoa mon that bai!");
+            setError(typeof err === "string" ? err : "Xóa món thất bại!");
         }
     };
 
     const filteredItems = items.filter((item) => {
         const matchType = filterType === "all" || item.type === filterType;
-        const matchSearch = item.name.toLowerCase().includes(search.toLowerCase().trim());
+        const matchSearch =
+            matchVietnameseSearch(item.name, search) ||
+            matchVietnameseSearch(item.displayName, search);
         return matchType && matchSearch;
     });
 
     return (
         <div>
             <div className="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
-                <h4 className="fw-bold mb-0">Quan Ly Thuc Don ({items.length} mon)</h4>
+                <h4 className="fw-bold mb-0">Quản Lý Thực Đơn ({items.length} món)</h4>
                 {isAdmin && (
                     <Button variant="primary" onClick={handleOpenAdd} className="fw-semibold">
-                        + Them Mon Moi
+                        + Thêm Món Mới
                     </Button>
                 )}
             </div>
@@ -237,21 +254,21 @@ const MenuManagePage = () => {
                                     size="sm"
                                     onClick={() => setFilterType("all")}
                                 >
-                                    Tat Ca
+                                    Tất Cả
                                 </Button>
                                 <Button
                                     variant={filterType === "food" ? "dark" : "outline-dark"}
                                     size="sm"
                                     onClick={() => setFilterType("food")}
                                 >
-                                    Mon An
+                                    Món Ăn
                                 </Button>
                                 <Button
                                     variant={filterType === "drink" ? "dark" : "outline-dark"}
                                     size="sm"
                                     onClick={() => setFilterType("drink")}
                                 >
-                                    Do Uong
+                                    Đồ Uống
                                 </Button>
                             </ButtonGroup>
                         </Col>
@@ -259,7 +276,7 @@ const MenuManagePage = () => {
                             <Form.Control
                                 size="sm"
                                 type="text"
-                                placeholder="Tim kiem ten mon..."
+                                placeholder="Tìm kiếm tên món (có dấu hoặc không dấu)..."
                                 value={search}
                                 onChange={(e) => setSearch(e.target.value)}
                             />
@@ -278,11 +295,11 @@ const MenuManagePage = () => {
                         <Table responsive hover className="align-middle mb-0">
                             <thead className="table-light">
                                 <tr>
-                                    <th>Mon</th>
-                                    <th>Phan Loai</th>
-                                    <th>Gia Ban</th>
-                                    <th>Trang Thai</th>
-                                    <th className="text-end">Thao Tac</th>
+                                    <th>Món</th>
+                                    <th>Phân Loại</th>
+                                    <th>Giá Bán</th>
+                                    <th>Trạng Thái</th>
+                                    <th className="text-end">Thao Tác</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -292,7 +309,7 @@ const MenuManagePage = () => {
                                             <div className="d-flex align-items-center gap-3">
                                                 <img
                                                     src={item.image || "/images/pho-bo.jpg"}
-                                                    alt={item.name}
+                                                    alt={item.displayName}
                                                     onError={(e) => {
                                                         e.target.onerror = null;
                                                         e.target.src =
@@ -308,9 +325,9 @@ const MenuManagePage = () => {
                                                     }}
                                                 />
                                                 <div>
-                                                    <div className="fw-bold">{item.name}</div>
+                                                    <div className="fw-bold">{item.displayName}</div>
                                                     <div className="small text-muted">
-                                                        {item.description}
+                                                        {item.displayDescription}
                                                     </div>
                                                 </div>
                                             </div>
@@ -320,15 +337,15 @@ const MenuManagePage = () => {
                                                 bg={item.type === "food" ? "info" : "warning"}
                                                 text="dark"
                                             >
-                                                {item.type === "food" ? "Mon an" : "Do uong"}
+                                                {item.type === "food" ? "Món ăn" : "Đồ uống"}
                                             </Badge>
                                         </td>
                                         <td className="fw-bold text-danger">
-                                            {item.price.toLocaleString("vi-VN")} d
+                                            {item.price.toLocaleString("vi-VN")} đ
                                         </td>
                                         <td>
                                             <Badge bg={item.isAvailable ? "success" : "danger"}>
-                                                {item.isAvailable ? "Con mon" : "Tam het"}
+                                                {item.isAvailable ? "Còn món" : "Tạm hết"}
                                             </Badge>
                                         </td>
                                         <td className="text-end text-nowrap">
@@ -342,7 +359,7 @@ const MenuManagePage = () => {
                                                 className="me-2"
                                                 onClick={() => handleToggleAvailability(item)}
                                             >
-                                                {item.isAvailable ? "Bao Het Mon" : "Mo Ban Lai"}
+                                                {item.isAvailable ? "Báo Hết Món" : "Mở Bán Lại"}
                                             </Button>
 
                                             {isAdmin && (
@@ -353,14 +370,14 @@ const MenuManagePage = () => {
                                                         className="me-2"
                                                         onClick={() => handleOpenEdit(item)}
                                                     >
-                                                        Sua
+                                                        Sửa
                                                     </Button>
                                                     <Button
                                                         variant="outline-danger"
                                                         size="sm"
                                                         onClick={() => handleDeleteItem(item)}
                                                     >
-                                                        Xoa
+                                                        Xóa
                                                     </Button>
                                                 </>
                                             )}
@@ -373,20 +390,20 @@ const MenuManagePage = () => {
                 </Card>
             )}
 
-            {/* Modal Them / Sua Mon */}
+            {/* Modal Thêm / Sửa Món */}
             <Modal show={showModal} onHide={() => setShowModal(false)} centered>
                 <Form onSubmit={handleSaveItem}>
                     <Modal.Header closeButton>
                         <Modal.Title className="fs-5 fw-bold">
-                            {editingItem ? "Cap Nhat Mon" : "Them Mon Moi"}
+                            {editingItem ? "Cập Nhật Món" : "Thêm Món Mới"}
                         </Modal.Title>
                     </Modal.Header>
                     <Modal.Body>
                         <Form.Group className="mb-3">
-                            <Form.Label>Ten mon (*)</Form.Label>
+                            <Form.Label>Tên món (*)</Form.Label>
                             <Form.Control
                                 type="text"
-                                placeholder="Vi du: Pho Bo Dac Biet"
+                                placeholder="Ví dụ: Phở Bò Đặc Biệt"
                                 value={formData.name}
                                 onChange={(e) =>
                                     setFormData({ ...formData, name: e.target.value })
@@ -398,12 +415,12 @@ const MenuManagePage = () => {
                         <Row className="mb-3">
                             <Col sm={6}>
                                 <Form.Group>
-                                    <Form.Label>Gia ban (VND) (*)</Form.Label>
+                                    <Form.Label>Giá bán (VNĐ) (*)</Form.Label>
                                     <Form.Control
                                         type="number"
                                         min="0"
                                         step="1000"
-                                        placeholder="Vi du: 55000"
+                                        placeholder="Ví dụ: 55000"
                                         value={formData.price}
                                         onChange={(e) =>
                                             setFormData({ ...formData, price: e.target.value })
@@ -414,7 +431,7 @@ const MenuManagePage = () => {
                             </Col>
                             <Col sm={6}>
                                 <Form.Group>
-                                    <Form.Label>Phan loai (*)</Form.Label>
+                                    <Form.Label>Phân loại (*)</Form.Label>
                                     <Form.Select
                                         value={formData.type}
                                         onChange={(e) => {
@@ -429,18 +446,18 @@ const MenuManagePage = () => {
                                             });
                                         }}
                                     >
-                                        <option value="food">Mon an (food)</option>
-                                        <option value="drink">Do uong (drink)</option>
+                                        <option value="food">Món ăn (food)</option>
+                                        <option value="drink">Đồ uống (drink)</option>
                                     </Form.Select>
                                 </Form.Group>
                             </Col>
                         </Row>
 
                         <Form.Group className="mb-3">
-                            <Form.Label>Duong dan Hinh anh</Form.Label>
+                            <Form.Label>Đường dẫn Hình ảnh</Form.Label>
                             <Form.Control
                                 type="text"
-                                placeholder="/images/... hoac https://images.unsplash.com/..."
+                                placeholder="/images/... hoặc https://images.unsplash.com/..."
                                 value={formData.image}
                                 onChange={(e) =>
                                     setFormData({ ...formData, image: e.target.value })
@@ -454,7 +471,7 @@ const MenuManagePage = () => {
                                         setFormData({ ...formData, image: "/images/pho-bo.jpg" })
                                     }
                                 >
-                                    Pho Bo
+                                    Phở Bò
                                 </Button>
                                 <Button
                                     size="sm"
@@ -463,7 +480,7 @@ const MenuManagePage = () => {
                                         setFormData({ ...formData, image: "/images/bun-dau.jpg" })
                                     }
                                 >
-                                    Bun Dau
+                                    Bún Đậu
                                 </Button>
                                 <Button
                                     size="sm"
@@ -475,7 +492,7 @@ const MenuManagePage = () => {
                                         })
                                     }
                                 >
-                                    Com Tam
+                                    Cơm Tấm
                                 </Button>
                                 <Button
                                     size="sm"
@@ -487,7 +504,7 @@ const MenuManagePage = () => {
                                         })
                                     }
                                 >
-                                    Banh Mi
+                                    Bánh Mì
                                 </Button>
                                 <Button
                                     size="sm"
@@ -496,7 +513,7 @@ const MenuManagePage = () => {
                                         setFormData({ ...formData, image: "/images/tra-tac.jpg" })
                                     }
                                 >
-                                    Tra Tac
+                                    Trà Tắc
                                 </Button>
                                 <Button
                                     size="sm"
@@ -505,7 +522,7 @@ const MenuManagePage = () => {
                                         setFormData({ ...formData, image: "/images/tra-sua.jpg" })
                                     }
                                 >
-                                    Tra Sua
+                                    Trà Sữa
                                 </Button>
                                 <Button
                                     size="sm"
@@ -517,17 +534,17 @@ const MenuManagePage = () => {
                                         })
                                     }
                                 >
-                                    Ca Phe Sua
+                                    Cà Phê Sữa
                                 </Button>
                             </div>
                         </Form.Group>
 
                         <Form.Group>
-                            <Form.Label>Mo ta chi tiet</Form.Label>
+                            <Form.Label>Mô tả chi tiết</Form.Label>
                             <Form.Control
                                 as="textarea"
                                 rows={2}
-                                placeholder="Mo ta huong vi, thanh phan..."
+                                placeholder="Mô tả hương vị, thành phần món..."
                                 value={formData.description}
                                 onChange={(e) =>
                                     setFormData({ ...formData, description: e.target.value })
@@ -537,10 +554,10 @@ const MenuManagePage = () => {
                     </Modal.Body>
                     <Modal.Footer>
                         <Button variant="secondary" size="sm" onClick={() => setShowModal(false)}>
-                            Huy
+                            Hủy
                         </Button>
                         <Button type="submit" variant="primary" size="sm" disabled={saving}>
-                            {saving ? "Dang luu..." : "Luu Thong Tin"}
+                            {saving ? "Đang lưu..." : "Lưu Thông Tin"}
                         </Button>
                     </Modal.Footer>
                 </Form>

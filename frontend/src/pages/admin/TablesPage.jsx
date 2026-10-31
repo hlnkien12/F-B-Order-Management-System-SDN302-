@@ -3,6 +3,7 @@ import { Row, Col, Card, Badge, Button, Form, Spinner, Alert } from "react-boots
 import { QRCodeCanvas } from "qrcode.react";
 import { Link } from "react-router-dom";
 import axiosClient from "../../api/axiosClient";
+import { toVietnamese } from "../../utils/vietnameseDictionary";
 
 const TablesPage = () => {
     const [tables, setTables] = useState([]);
@@ -21,7 +22,7 @@ const TablesPage = () => {
             const res = await axiosClient.get("/tables");
             setTables(res.data || []);
         } catch (err) {
-            setError(typeof err === "string" ? err : "Khong the tai danh sach ban!");
+            setError(typeof err === "string" ? err : "Không thể tải danh sách bàn!");
         } finally {
             setLoading(false);
         }
@@ -48,9 +49,9 @@ const TablesPage = () => {
             setTables((prev) => [...prev, res.data]);
             setNewCode("");
             setNewName("");
-            showNotice("Tao ban moi thanh cong!");
+            showNotice("Tạo bàn mới thành công!");
         } catch (err) {
-            setError(typeof err === "string" ? err : "Tao ban moi that bai!");
+            setError(typeof err === "string" ? err : "Tạo bàn mới thất bại!");
         } finally {
             setCreating(false);
         }
@@ -58,69 +59,76 @@ const TablesPage = () => {
 
     const handleToggleActive = async (table) => {
         try {
-            setError("");
-            const res = await axiosClient.put(`/tables/${table._id}`, {
-                isActive: !table.isActive
-            });
-            setTables((prev) => prev.map((t) => (t._id === table._id ? res.data : t)));
-            showNotice(`Da cap nhat trang thai [${table.name}]!`);
+            const res = await axiosClient.patch(`/tables/${table._id}/toggle-active`);
+            setTables((prev) =>
+                prev.map((t) => (t._id === table._id ? { ...t, isActive: res.data.isActive } : t))
+            );
+            showNotice(
+                `Đã ${res.data.isActive ? "kích hoạt" : "tạm ngưng"} bàn ${table.code}!`
+            );
         } catch (err) {
-            setError(typeof err === "string" ? err : "Cap nhat ban that bai!");
+            setError(typeof err === "string" ? err : "Thao tác thất bại!");
         }
     };
 
     const handleDeleteTable = async (table) => {
-        if (!window.confirm(`Ban co chac muon xoa [${table.name} (${table.code})]?`)) return;
+        if (!window.confirm(`Bạn có chắc chắn muốn xóa bàn ${table.name} (${table.code})?`)) {
+            return;
+        }
         try {
-            setError("");
             await axiosClient.delete(`/tables/${table._id}`);
             setTables((prev) => prev.filter((t) => t._id !== table._id));
-            showNotice(`Da xoa [${table.name}]!`);
+            showNotice(`Đã xóa bàn ${table.code}!`);
         } catch (err) {
-            setError(typeof err === "string" ? err : "Xoa ban that bai!");
+            setError(typeof err === "string" ? err : "Xóa bàn thất bại!");
         }
     };
 
     const handleDownloadQR = (code) => {
         const canvas = document.getElementById(`qr-canvas-${code}`);
         if (!canvas) return;
-        const url = canvas.toDataURL("image/png");
+        const pngUrl = canvas.toDataURL("image/png");
         const a = document.createElement("a");
-        a.href = url;
-        a.download = `QR-Ban-${code}.png`;
+        a.href = pngUrl;
+        a.download = `QR-${code}.png`;
+        document.body.appendChild(a);
         a.click();
+        document.body.removeChild(a);
     };
 
     return (
         <div>
-            <h4 className="fw-bold mb-3">Quan Ly Ban An va Ma QR ({tables.length} ban)</h4>
+            <div className="d-flex justify-content-between align-items-center mb-3">
+                <h4 className="fw-bold mb-0">Quản Lý Bàn Ăn & Mã QR Gọi Món</h4>
+                <Button variant="outline-primary" size="sm" onClick={fetchTables}>
+                    Làm Mới
+                </Button>
+            </div>
 
-            {successMsg && <Alert variant="success" className="py-2">{successMsg}</Alert>}
             {error && <Alert variant="danger" dismissible onClose={() => setError("")}>{error}</Alert>}
+            {successMsg && <Alert variant="success">{successMsg}</Alert>}
 
-            {/* Form them ban moi */}
+            {/* Form tao ban moi */}
             <Card className="border-0 shadow-sm mb-4">
                 <Card.Body>
-                    <h6 className="fw-bold mb-3">Them Ban An Moi</h6>
+                    <h6 className="fw-bold mb-3">Thêm Bàn Ăn Mới</h6>
                     <Form onSubmit={handleCreateTable}>
-                        <Row className="g-2 align-items-end">
+                        <Row className="g-2">
                             <Col sm={4}>
-                                <Form.Label className="small mb-1">Ma ban (*)</Form.Label>
                                 <Form.Control
                                     size="sm"
                                     type="text"
-                                    placeholder="Vi du: T11"
+                                    placeholder="Mã bàn (Ví dụ: T11)"
                                     value={newCode}
-                                    onChange={(e) => setNewCode(e.target.value.toUpperCase())}
+                                    onChange={(e) => setNewCode(e.target.value)}
                                     required
                                 />
                             </Col>
                             <Col sm={5}>
-                                <Form.Label className="small mb-1">Ten hien thi (*)</Form.Label>
                                 <Form.Control
                                     size="sm"
                                     type="text"
-                                    placeholder="Vi du: Ban 11"
+                                    placeholder="Tên bàn (Ví dụ: Bàn 11)"
                                     value={newName}
                                     onChange={(e) => setNewName(e.target.value)}
                                     required
@@ -134,7 +142,7 @@ const TablesPage = () => {
                                     className="w-100 fw-semibold"
                                     disabled={creating}
                                 >
-                                    {creating ? "Dang tao..." : "+ Them Ban"}
+                                    {creating ? "Đang tạo..." : "+ Thêm Bàn"}
                                 </Button>
                             </Col>
                         </Row>
@@ -157,10 +165,10 @@ const TablesPage = () => {
                                     <Card.Body className="d-flex flex-column align-items-center">
                                         <div className="w-100 d-flex justify-content-between align-items-center mb-2">
                                             <strong className="fs-5 text-primary">
-                                                {table.name} ({table.code})
+                                                {toVietnamese(table.name)} ({table.code})
                                             </strong>
                                             <Badge bg={table.isActive ? "success" : "secondary"}>
-                                                {table.isActive ? "Hoat dong" : "Tam ngung"}
+                                                {table.isActive ? "Hoạt động" : "Tạm ngưng"}
                                             </Badge>
                                         </div>
 
@@ -184,14 +192,14 @@ const TablesPage = () => {
                                                 variant="outline-primary"
                                                 size="sm"
                                             >
-                                                Mo Link
+                                                Mở Link
                                             </Button>
                                             <Button
                                                 variant="outline-dark"
                                                 size="sm"
                                                 onClick={() => handleDownloadQR(table.code)}
                                             >
-                                                Tai QR
+                                                Tải QR
                                             </Button>
                                             <Button
                                                 variant={
@@ -202,14 +210,14 @@ const TablesPage = () => {
                                                 size="sm"
                                                 onClick={() => handleToggleActive(table)}
                                             >
-                                                {table.isActive ? "Tam Khoa" : "Mo Lai"}
+                                                {table.isActive ? "Tạm Khóa" : "Mở Lại"}
                                             </Button>
                                             <Button
                                                 variant="outline-danger"
                                                 size="sm"
                                                 onClick={() => handleDeleteTable(table)}
                                             >
-                                                Xoa
+                                                Xóa
                                             </Button>
                                         </div>
                                     </Card.Body>
@@ -224,4 +232,3 @@ const TablesPage = () => {
 };
 
 export default TablesPage;
-

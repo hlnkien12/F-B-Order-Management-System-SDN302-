@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import axiosClient from "../../api/axiosClient";
 import { useCart } from "../../context/CartContext";
 import { socket } from "../../socket/socket";
+import { toVietnamese, matchVietnameseSearch } from "../../utils/vietnameseDictionary";
 
 const DISH_IMAGE_MAP = {
     "pho bo": "/images/pho-bo.jpg",
@@ -50,7 +51,7 @@ const MenuPage = () => {
     const [searchTerm, setSearchTerm] = useState("");
     const [addedNotice, setAddedNotice] = useState("");
 
-    // 1. Doc ma ban tu URL (?table=T01)
+    // 1. Đọc mã bàn từ URL (?table=T01)
     useEffect(() => {
         const tableFromUrl = searchParams.get("table");
         if (tableFromUrl) {
@@ -58,7 +59,7 @@ const MenuPage = () => {
         }
     }, [searchParams, setTableCode]);
 
-    // 2. Lay danh sach ban va danh sach thuc don
+    // 2. Lấy danh sách bàn và danh sách thực đơn
     useEffect(() => {
         const fetchData = async () => {
             try {
@@ -69,12 +70,18 @@ const MenuPage = () => {
                 ]);
                 const mappedMenu = (menuRes.data || []).map((item) => ({
                     ...item,
+                    displayName: toVietnamese(item.name),
+                    displayDescription: toVietnamese(item.description),
                     image: resolveMenuImage(item)
                 }));
+                const mappedTables = (tableRes.data || []).map((t) => ({
+                    ...t,
+                    displayName: toVietnamese(t.name)
+                }));
                 setMenuItems(mappedMenu);
-                setTables(tableRes.data || []);
+                setTables(mappedTables);
             } catch (err) {
-                setError(typeof err === "string" ? err : "Khong the tai thuc don!");
+                setError(typeof err === "string" ? err : "Không thể tải thực đơn!");
             } finally {
                 setLoading(false);
             }
@@ -82,7 +89,7 @@ const MenuPage = () => {
         fetchData();
     }, []);
 
-    // 3. Lang nghe Socket: Khi nhan vien bat/tat mon -> tu dong cap nhat thuc don realtime
+    // 3. Lắng nghe Socket: Khi nhân viên bật/tắt món -> tự động cập nhật realtime
     useEffect(() => {
         const handleMenuUpdated = (data) => {
             setMenuItems((prev) =>
@@ -98,22 +105,24 @@ const MenuPage = () => {
         };
     }, []);
 
-    // 4. Loc danh sach mon
+    // 4. Lọc danh sách món và tìm kiếm đa năng (gõ có dấu hay không dấu đều tìm được)
     const filteredItems = menuItems.filter((item) => {
         const matchType = selectedType === "all" || item.type === selectedType;
-        const matchSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase().trim());
+        const matchSearch =
+            matchVietnameseSearch(item.name, searchTerm) ||
+            matchVietnameseSearch(item.displayName, searchTerm);
         return matchType && matchSearch;
     });
 
     const handleAdd = (item) => {
         addToCart(item);
-        setAddedNotice(`Da them [${item.name}] vao gio hang!`);
+        setAddedNotice(`Đã thêm [${item.displayName}] vào giỏ hàng!`);
         setTimeout(() => setAddedNotice(""), 2000);
     };
 
     return (
         <Container className="py-4">
-            {/* Thong bao them mon */}
+            {/* Thông báo thêm món */}
             {addedNotice && (
                 <Alert
                     variant="success"
@@ -124,27 +133,27 @@ const MenuPage = () => {
                 </Alert>
             )}
 
-            {/* Chon ban neu chua co */}
+            {/* Chọn bàn nếu chưa có */}
             <Card className="mb-4 shadow-sm border-0 bg-white">
                 <Card.Body className="p-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
                     <div>
-                        <span className="text-muted small">Vi tri ngoi: </span>
+                        <span className="text-muted small">Vị trí ngồi: </span>
                         <strong className="fs-5 text-primary">
-                            {tableCode ? `Ban ${tableCode}` : "Chua chon ban"}
+                            {tableCode ? `Bàn ${tableCode}` : "Chưa chọn bàn"}
                         </strong>
                     </div>
                     <div className="d-flex align-items-center gap-2">
-                        <span className="small text-muted">Chon / Doi ban:</span>
+                        <span className="small text-muted">Chọn / Đổi bàn:</span>
                         <Form.Select
                             size="sm"
                             value={tableCode}
                             onChange={(e) => setTableCode(e.target.value)}
-                            style={{ width: 160 }}
+                            style={{ width: 170 }}
                         >
-                            <option value="">-- Chon ban --</option>
+                            <option value="">-- Chọn bàn --</option>
                             {tables.map((t) => (
                                 <option key={t._id} value={t.code}>
-                                    {t.name} ({t.code})
+                                    {t.displayName} ({t.code})
                                 </option>
                             ))}
                         </Form.Select>
@@ -152,7 +161,7 @@ const MenuPage = () => {
                 </Card.Body>
             </Card>
 
-            {/* Bo loc va Tim kiem */}
+            {/* Bộ lọc và Tìm kiếm */}
             <Row className="mb-4 g-2">
                 <Col md={6}>
                     <ButtonGroup className="w-100">
@@ -160,42 +169,42 @@ const MenuPage = () => {
                             variant={selectedType === "all" ? "primary" : "outline-primary"}
                             onClick={() => setSelectedType("all")}
                         >
-                            Tat Ca
+                            Tất Cả
                         </Button>
                         <Button
                             variant={selectedType === "food" ? "primary" : "outline-primary"}
                             onClick={() => setSelectedType("food")}
                         >
-                            Mon An
+                            Món Ăn
                         </Button>
                         <Button
                             variant={selectedType === "drink" ? "primary" : "outline-primary"}
                             onClick={() => setSelectedType("drink")}
                         >
-                            Do Uong
+                            Đồ Uống
                         </Button>
                     </ButtonGroup>
                 </Col>
                 <Col md={6}>
                     <Form.Control
                         type="text"
-                        placeholder="Tim kiem ten mon an, do uong..."
+                        placeholder="Tìm kiếm tên món ăn, đồ uống (có dấu hoặc không dấu)..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                     />
                 </Col>
             </Row>
 
-            {/* Danh sach mon an */}
+            {/* Danh sách món ăn */}
             {loading ? (
                 <div className="text-center py-5">
                     <Spinner animation="border" variant="primary" />
-                    <p className="mt-2 text-muted">Dang tai thuc don...</p>
+                    <p className="mt-2 text-muted">Đang tải thực đơn...</p>
                 </div>
             ) : error ? (
                 <Alert variant="danger">{error}</Alert>
             ) : filteredItems.length === 0 ? (
-                <p className="text-center text-muted py-5">Khong tim thay mon nao phu hop!</p>
+                <p className="text-center text-muted py-5">Không tìm thấy món nào phù hợp!</p>
             ) : (
                 <Row xs={1} sm={2} md={3} lg={4} className="g-4">
                     {filteredItems.map((item) => (
@@ -204,7 +213,7 @@ const MenuPage = () => {
                                 <Card.Img
                                     variant="top"
                                     src={item.image}
-                                    alt={item.name}
+                                    alt={item.displayName}
                                     onError={(e) => {
                                         e.target.onerror = null;
                                         e.target.src = item.type === "food" ? "/images/pho-bo.jpg" : "/images/tra-sua.jpg";
@@ -213,22 +222,22 @@ const MenuPage = () => {
                                 />
                                 {!item.isAvailable && (
                                     <Badge bg="danger" className="position-absolute top-0 end-0 m-2 p-2">
-                                        Tam Het Mon
+                                        Tạm Hết Món
                                     </Badge>
                                 )}
                                 <Card.Body className="d-flex flex-column">
                                     <div className="d-flex justify-content-between align-items-start mb-1">
-                                        <Card.Title className="fs-6 fw-bold mb-0">{item.name}</Card.Title>
+                                        <Card.Title className="fs-6 fw-bold mb-0">{item.displayName}</Card.Title>
                                         <Badge bg={item.type === "food" ? "info" : "warning"} text="dark">
-                                            {item.type === "food" ? "Mon an" : "Do uong"}
+                                            {item.type === "food" ? "Món ăn" : "Đồ uống"}
                                         </Badge>
                                     </div>
                                     <Card.Text className="small text-muted mb-2 flex-grow-1" style={{ minHeight: 40 }}>
-                                        {item.description || "Mon ngon chuan vi quan."}
+                                        {item.displayDescription}
                                     </Card.Text>
                                     <div className="d-flex justify-content-between align-items-center mt-auto pt-2 border-top">
                                         <span className="fw-bold text-danger fs-6">
-                                            {item.price.toLocaleString("vi-VN")} d
+                                            {item.price.toLocaleString("vi-VN")} đ
                                         </span>
                                         <Button
                                             variant={item.isAvailable ? "primary" : "secondary"}
@@ -236,7 +245,7 @@ const MenuPage = () => {
                                             disabled={!item.isAvailable}
                                             onClick={() => handleAdd(item)}
                                         >
-                                            {item.isAvailable ? "+ Them vao gio" : "Het hang"}
+                                            {item.isAvailable ? "+ Thêm vào giỏ" : "Hết hàng"}
                                         </Button>
                                     </div>
                                 </Card.Body>

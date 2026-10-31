@@ -3,12 +3,13 @@ import { Container, Card, Badge, Table, Button, Spinner, Alert, ProgressBar } fr
 import { useParams, Link } from "react-router-dom";
 import axiosClient from "../../api/axiosClient";
 import { socket } from "../../socket/socket";
+import { toVietnamese } from "../../utils/vietnameseDictionary";
 
 const STATUS_MAP = {
-    pending: { label: "Cho quan xac nhan", variant: "warning", progress: 25 },
-    confirmed: { label: "Quan da nhan, dang lam mon", variant: "primary", progress: 65 },
-    completed: { label: "Mon da san sang / Hoan thanh", variant: "success", progress: 100 },
-    cancelled: { label: "Don da bi huy", variant: "danger", progress: 100 }
+    pending: { label: "Chờ quán xác nhận", variant: "warning", progress: 25 },
+    confirmed: { label: "Quán đã nhận, đang làm món", variant: "primary", progress: 65 },
+    completed: { label: "Món đã sẵn sàng / Hoàn thành", variant: "success", progress: 100 },
+    cancelled: { label: "Đơn đã bị hủy", variant: "danger", progress: 100 }
 };
 
 const OrderTrackingPage = () => {
@@ -17,7 +18,7 @@ const OrderTrackingPage = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
-    // 1. Lay thong tin don
+    // 1. Lấy thông tin đơn
     useEffect(() => {
         const fetchOrder = async () => {
             try {
@@ -25,7 +26,7 @@ const OrderTrackingPage = () => {
                 const res = await axiosClient.get(`/orders/${orderId}/track`);
                 setOrder(res.data);
             } catch (err) {
-                setError(typeof err === "string" ? err : "Khong tim thay don hang!");
+                setError(typeof err === "string" ? err : "Không tìm thấy đơn hàng!");
             } finally {
                 setLoading(false);
             }
@@ -33,7 +34,7 @@ const OrderTrackingPage = () => {
         fetchOrder();
     }, [orderId]);
 
-    // 2. Tham gia room Socket de nhan cap nhat realtime khi quan duyet don
+    // 2. Tham gia room Socket để nhận cập nhật realtime khi quán duyệt đơn
     useEffect(() => {
         if (!orderId) return;
 
@@ -59,7 +60,7 @@ const OrderTrackingPage = () => {
         return (
             <Container className="py-5 text-center">
                 <Spinner animation="border" variant="primary" />
-                <p className="mt-2 text-muted">Dang tai thong tin don hang...</p>
+                <p className="mt-2 text-muted">Đang tải thông tin đơn hàng...</p>
             </Container>
         );
     }
@@ -67,9 +68,9 @@ const OrderTrackingPage = () => {
     if (error || !order) {
         return (
             <Container className="py-5 text-center">
-                <Alert variant="danger">{error || "Khong tim thay thong tin don hang!"}</Alert>
+                <Alert variant="danger">{error || "Không tìm thấy thông tin đơn hàng!"}</Alert>
                 <Button as={Link} to="/" variant="primary">
-                    Ve Thuc Don
+                    Về Thực Đơn
                 </Button>
             </Container>
         );
@@ -87,7 +88,7 @@ const OrderTrackingPage = () => {
                 <Card.Body className="p-4">
                     <div className="d-flex justify-content-between align-items-center mb-3">
                         <div>
-                            <span className="text-muted small">Ma don hang:</span>
+                            <span className="text-muted small">Mã đơn hàng:</span>
                             <h4 className="fw-bold mb-0 text-primary">{order.orderCode}</h4>
                         </div>
                         <Badge
@@ -109,34 +110,34 @@ const OrderTrackingPage = () => {
 
                     {order.status === "cancelled" && (
                         <Alert variant="danger" className="py-2">
-                            <strong>Ly do huy:</strong> {order.cancelReason || "Khong co ly do cu the."}
+                            <strong>Lý do hủy:</strong> {order.cancelReason || "Không có lý do cụ thể."}
                         </Alert>
                     )}
 
                     <div className="bg-light p-3 rounded mb-3 small">
                         <div>
-                            <strong>Ban phuc vu:</strong> {order.tableName}
+                            <strong>Bàn phục vụ:</strong> {toVietnamese(order.tableName)}
                         </div>
                         <div>
-                            <strong>Thoi gian dat:</strong>{" "}
+                            <strong>Thời gian đặt:</strong>{" "}
                             {new Date(order.createdAt).toLocaleString("vi-VN")}
                         </div>
                         {order.note && (
                             <div>
-                                <strong>Ghi chu:</strong> {order.note}
+                                <strong>Ghi chú:</strong> {order.note}
                             </div>
                         )}
                     </div>
 
-                    <h6 className="fw-bold mb-2">Chi Tiet Mon Da Goi:</h6>
+                    <h6 className="fw-bold mb-2">Chi Tiết Món Đã Gọi:</h6>
                     <Table responsive className="small align-middle mb-3">
                         <tbody>
                             {order.items.map((item, idx) => (
                                 <tr key={idx}>
-                                    <td>{item.name}</td>
+                                    <td>{toVietnamese(item.name)}</td>
                                     <td className="text-center">x {item.quantity}</td>
                                     <td className="text-end fw-semibold">
-                                        {(item.price * item.quantity).toLocaleString("vi-VN")} d
+                                        {(item.price * item.quantity).toLocaleString("vi-VN")} đ
                                     </td>
                                 </tr>
                             ))}
@@ -144,10 +145,10 @@ const OrderTrackingPage = () => {
                         <tfoot>
                             <tr className="border-top">
                                 <td colSpan={2} className="fw-bold">
-                                    Tong cong:
+                                    Tổng cộng:
                                 </td>
                                 <td className="text-end fw-bold text-danger fs-6">
-                                    {order.totalAmount.toLocaleString("vi-VN")} d
+                                    {order.totalAmount.toLocaleString("vi-VN")} đ
                                 </td>
                             </tr>
                         </tfoot>
@@ -155,7 +156,7 @@ const OrderTrackingPage = () => {
 
                     <div className="text-center pt-2">
                         <Button as={Link} to="/" variant="outline-primary" size="sm" className="me-2">
-                            Goi Them Mon
+                            Gọi Thêm Món
                         </Button>
                     </div>
                 </Card.Body>
@@ -165,4 +166,3 @@ const OrderTrackingPage = () => {
 };
 
 export default OrderTrackingPage;
-

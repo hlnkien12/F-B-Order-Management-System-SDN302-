@@ -16,9 +16,14 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
-    // 1. Khi load trang, thu goi refresh de lay session dang nhap cu neu con cookie
+    // 1. Khi load trang, chi goi refresh neu truoc do da tung dang nhap
     useEffect(() => {
         const checkAuth = async () => {
+            const hasSession = localStorage.getItem("has_auth_session") === "1";
+            if (!hasSession) {
+                setLoading(false);
+                return;
+            }
             try {
                 const res = await axios.post("/api/auth/refresh", {}, { withCredentials: true });
                 const token = res.data?.data?.accessToken;
@@ -29,6 +34,7 @@ export const AuthProvider = ({ children }) => {
                     setUser(meRes.data);
                 }
             } catch (err) {
+                localStorage.removeItem("has_auth_session");
                 setUser(null);
                 setAccessToken(null);
             } finally {
@@ -42,6 +48,7 @@ export const AuthProvider = ({ children }) => {
     const login = async (email, password) => {
         const res = await axiosClient.post("/auth/login", { email, password });
         const { user: userData, accessToken } = res.data;
+        localStorage.setItem("has_auth_session", "1");
         setAccessToken(accessToken);
         syncSocketToken(accessToken);
         setUser(userData);
@@ -58,6 +65,7 @@ export const AuthProvider = ({ children }) => {
         try {
             await axiosClient.post("/auth/logout");
         } finally {
+            localStorage.removeItem("has_auth_session");
             setUser(null);
             setAccessToken(null);
             syncSocketToken(null);
@@ -72,4 +80,3 @@ export const AuthProvider = ({ children }) => {
 };
 
 export const useAuth = () => useContext(AuthContext);
-

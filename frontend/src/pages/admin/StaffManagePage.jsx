@@ -24,7 +24,7 @@ const StaffManagePage = () => {
             const res = await axiosClient.get("/staff");
             setStaffList(res.data || []);
         } catch (err) {
-            setError(typeof err === "string" ? err : "Khong the tai danh sach nhan vien!");
+            setError(typeof err === "string" ? err : "Không thể tải danh sách nhân viên!");
         } finally {
             setLoading(false);
         }
@@ -58,9 +58,9 @@ const StaffManagePage = () => {
             setStaffList((prev) => [created, ...prev]);
             setShowCreateModal(false);
             setFormData({ name: "", email: "", phone: "", password: "" });
-            showNotice("Tao tai khoan nhan vien thanh cong!");
+            showNotice("Cấp tài khoản nhân viên mới thành công!");
         } catch (err) {
-            setError(typeof err === "string" ? err : "Tao tai khoan nhan vien that bai!");
+            setError(typeof err === "string" ? err : "Cấp tài khoản thất bại!");
         } finally {
             setCreating(false);
         }
@@ -69,49 +69,53 @@ const StaffManagePage = () => {
     const handleToggleStatus = async (staff) => {
         const staffId = staff._id || staff.id;
         try {
-            setError("");
-            const res = await axiosClient.patch(`/staff/${staffId}/status`, {
-                isActive: !staff.isActive
-            });
+            const res = await axiosClient.patch(`/staff/${staffId}/toggle-status`);
             setStaffList((prev) =>
-                prev.map((s) =>
-                    (s._id || s.id) === staffId ? { ...s, isActive: res.data.isActive } : s
-                )
+                prev.map((s) => ((s._id || s.id) === staffId ? { ...s, isActive: res.data.isActive } : s))
             );
-            showNotice(res.message);
+            showNotice(
+                `Đã ${res.data.isActive ? "mở khóa" : "khóa"} tài khoản của ${staff.name}!`
+            );
         } catch (err) {
-            setError(typeof err === "string" ? err : "Doi trang thai tai khoan that bai!");
+            setError(typeof err === "string" ? err : "Thao tác thất bại!");
         }
     };
 
     const handleDeleteStaff = async (staff) => {
         const staffId = staff._id || staff.id;
-        if (!window.confirm(`Ban co chac muon xoa tai khoan nhan vien [${staff.name}]?`)) return;
+        if (!window.confirm(`Bạn có chắc chắn muốn xóa nhân viên ${staff.name}?`)) {
+            return;
+        }
         try {
-            setError("");
             await axiosClient.delete(`/staff/${staffId}`);
             setStaffList((prev) => prev.filter((s) => (s._id || s.id) !== staffId));
-            showNotice(`Da xoa tai khoan nhan vien [${staff.name}]!`);
+            showNotice(`Đã xóa nhân viên ${staff.name}!`);
         } catch (err) {
-            setError(typeof err === "string" ? err : "Xoa tai khoan nhan vien that bai!");
+            setError(typeof err === "string" ? err : "Xóa nhân viên thất bại!");
         }
     };
 
     return (
         <div>
-            <div className="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
-                <h4 className="fw-bold mb-0">Quan Ly Nhan Vien ({staffList.length} tai khoan)</h4>
-                <Button
-                    variant="primary"
-                    className="fw-semibold"
-                    onClick={() => setShowCreateModal(true)}
-                >
-                    + Them Nhan Vien Moi
-                </Button>
+            <div className="d-flex justify-content-between align-items-center mb-3">
+                <h4 className="fw-bold mb-0">Quản Lý Danh Sách Nhân Viên</h4>
+                <div className="d-flex gap-2">
+                    <Button variant="outline-primary" size="sm" onClick={fetchStaff}>
+                        Làm Mới
+                    </Button>
+                    <Button
+                        variant="primary"
+                        size="sm"
+                        className="fw-bold"
+                        onClick={() => setShowCreateModal(true)}
+                    >
+                        + Cấp Tài Khoản Mới
+                    </Button>
+                </div>
             </div>
 
-            {successMsg && <Alert variant="success" className="py-2">{successMsg}</Alert>}
             {error && <Alert variant="danger" dismissible onClose={() => setError("")}>{error}</Alert>}
+            {successMsg && <Alert variant="success">{successMsg}</Alert>}
 
             {loading ? (
                 <div className="text-center py-5">
@@ -123,18 +127,18 @@ const StaffManagePage = () => {
                         <Table responsive hover className="align-middle mb-0">
                             <thead className="table-light">
                                 <tr>
-                                    <th>Ho va Ten</th>
+                                    <th>Họ và Tên</th>
                                     <th>Email</th>
-                                    <th>So Dien Thoai</th>
-                                    <th>Trang Thai</th>
-                                    <th className="text-end">Thao Tac</th>
+                                    <th>Số Điện Thoại</th>
+                                    <th>Trạng Thái</th>
+                                    <th className="text-end">Thao Tác</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {staffList.length === 0 ? (
                                     <tr>
                                         <td colSpan={5} className="text-center py-4 text-muted">
-                                            Chua co tai khoan nhan vien nao.
+                                            Chưa có tài khoản nhân viên nào.
                                         </td>
                                     </tr>
                                 ) : (
@@ -147,7 +151,7 @@ const StaffManagePage = () => {
                                                 <td>{staff.phone}</td>
                                                 <td>
                                                     <Badge bg={staff.isActive ? "success" : "danger"}>
-                                                        {staff.isActive ? "Dang hoat dong" : "Da bi khoa"}
+                                                        {staff.isActive ? "Đang hoạt động" : "Đã bị khóa"}
                                                     </Badge>
                                                 </td>
                                                 <td className="text-end text-nowrap">
@@ -161,14 +165,14 @@ const StaffManagePage = () => {
                                                         className="me-2"
                                                         onClick={() => handleToggleStatus(staff)}
                                                     >
-                                                        {staff.isActive ? "Khoa Tai Khoan" : "Mo Khoa"}
+                                                        {staff.isActive ? "Khóa Tài Khoản" : "Mở Khóa"}
                                                     </Button>
                                                     <Button
                                                         variant="outline-danger"
                                                         size="sm"
                                                         onClick={() => handleDeleteStaff(staff)}
                                                     >
-                                                        Xoa
+                                                        Xóa
                                                     </Button>
                                                 </td>
                                             </tr>
@@ -183,73 +187,64 @@ const StaffManagePage = () => {
 
             {/* Modal Tao Nhan Vien Moi */}
             <Modal show={showCreateModal} onHide={() => setShowCreateModal(false)} centered>
-                <Form onSubmit={handleCreateStaff}>
+                <Form onSubmit={handleCreateStaff} autoComplete="off">
                     <Modal.Header closeButton>
                         <Modal.Title className="fs-5 fw-bold">
-                            Cap Tai Khoan Nhan Vien Moi
+                            Cấp Tài Khoản Nhân Viên Mới
                         </Modal.Title>
                     </Modal.Header>
                     <Modal.Body>
                         <Form.Group className="mb-3">
-                            <Form.Label>Ho va ten (*)</Form.Label>
+                            <Form.Label>Họ và tên (*)</Form.Label>
                             <Form.Control
                                 type="text"
-                                placeholder="Vi du: Nguyen Van Thu Ngan"
+                                placeholder="Ví dụ: Nguyễn Văn Thu Ngân"
                                 value={formData.name}
                                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                autoComplete="off"
                                 required
                             />
                         </Form.Group>
-
                         <Form.Group className="mb-3">
-                            <Form.Label>Email dang nhap (*)</Form.Label>
+                            <Form.Label>Email (*)</Form.Label>
                             <Form.Control
-                                type="email"
-                                placeholder="Vi du: staff2@shop.com"
+                                type="text"
+                                placeholder="staff@shop.com"
                                 value={formData.email}
-                                onChange={(e) =>
-                                    setFormData({ ...formData, email: e.target.value })
-                                }
+                                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                autoComplete="off"
                                 required
                             />
                         </Form.Group>
-
                         <Form.Group className="mb-3">
-                            <Form.Label>So dien thoai (10 so bat dau bang 0) (*)</Form.Label>
+                            <Form.Label>Số điện thoại (*)</Form.Label>
                             <Form.Control
                                 type="tel"
-                                placeholder="Vi du: 0912345678"
+                                placeholder="0901234567"
                                 value={formData.phone}
-                                onChange={(e) =>
-                                    setFormData({ ...formData, phone: e.target.value })
-                                }
+                                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                                autoComplete="off"
                                 required
                             />
                         </Form.Group>
-
-                        <Form.Group>
-                            <Form.Label>Mat khau (*)</Form.Label>
+                        <Form.Group className="mb-3">
+                            <Form.Label>Mật khẩu khởi tạo (*)</Form.Label>
                             <Form.Control
                                 type="password"
-                                placeholder="It nhat 6 ky tu"
+                                placeholder="Ít nhất 6 ký tự"
                                 value={formData.password}
-                                onChange={(e) =>
-                                    setFormData({ ...formData, password: e.target.value })
-                                }
+                                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                                autoComplete="new-password"
                                 required
                             />
                         </Form.Group>
                     </Modal.Body>
                     <Modal.Footer>
-                        <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => setShowCreateModal(false)}
-                        >
-                            Huy
+                        <Button variant="secondary" onClick={() => setShowCreateModal(false)}>
+                            Hủy
                         </Button>
-                        <Button type="submit" variant="primary" size="sm" disabled={creating}>
-                            {creating ? "Dang tao..." : "Tao Tai Khoan"}
+                        <Button variant="primary" type="submit" disabled={creating}>
+                            {creating ? "Đang tạo..." : "Tạo Tài Khoản"}
                         </Button>
                     </Modal.Footer>
                 </Form>
@@ -259,4 +254,3 @@ const StaffManagePage = () => {
 };
 
 export default StaffManagePage;
-

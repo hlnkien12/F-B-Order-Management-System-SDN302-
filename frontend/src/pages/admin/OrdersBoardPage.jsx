@@ -14,12 +14,13 @@ import {
 } from "react-bootstrap";
 import axiosClient from "../../api/axiosClient";
 import { socket } from "../../socket/socket";
+import { toVietnamese } from "../../utils/vietnameseDictionary";
 
 const STATUS_BADGE = {
-    pending: { label: "Cho xac nhan", bg: "warning", text: "dark" },
-    confirmed: { label: "Dang chuan bi", bg: "primary", text: "white" },
-    completed: { label: "Hoan thanh", bg: "success", text: "white" },
-    cancelled: { label: "Da huy", bg: "danger", text: "white" }
+    pending: { label: "Chờ xác nhận", bg: "warning", text: "dark" },
+    confirmed: { label: "Đang chuẩn bị", bg: "primary", text: "white" },
+    completed: { label: "Hoàn thành", bg: "success", text: "white" },
+    cancelled: { label: "Đã hủy", bg: "danger", text: "white" }
 };
 
 const getLocalToday = () => {
@@ -30,7 +31,7 @@ const getLocalToday = () => {
     return `${yyyy}-${mm}-${dd}`;
 };
 
-// Ham phat am thanh bao don moi bang Web Audio API
+// Hàm phát âm thanh báo đơn mới bằng Web Audio API
 const playNotificationSound = () => {
     try {
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -48,7 +49,7 @@ const playNotificationSound = () => {
         osc.start();
         osc.stop(ctx.currentTime + 0.45);
     } catch (e) {
-        // Bo qua neu trinh duyet chan autoplay audio
+        // Bỏ qua nếu trình duyệt chặn tự phát âm thanh
     }
 };
 
@@ -61,7 +62,7 @@ const OrdersBoardPage = () => {
     const [statusFilter, setStatusFilter] = useState("");
     const [selectedDate, setSelectedDate] = useState(getLocalToday);
 
-    // State cho Modal Huy don
+    // State cho Modal Hủy đơn
     const [cancelModalOrder, setCancelModalOrder] = useState(null);
     const [cancelReason, setCancelReason] = useState("");
     const [updatingId, setUpdatingId] = useState(null);
@@ -77,7 +78,7 @@ const OrdersBoardPage = () => {
             const res = await axiosClient.get(`/orders?${params.toString()}`);
             setOrders(res.data || []);
         } catch (err) {
-            setError(typeof err === "string" ? err : "Khong the tai danh sach don hang!");
+            setError(typeof err === "string" ? err : "Không thể tải danh sách đơn hàng!");
         } finally {
             setLoading(false);
         }
@@ -87,12 +88,12 @@ const OrdersBoardPage = () => {
         fetchOrders();
     }, [fetchOrders]);
 
-    // Lang nghe Socket realtime: Don moi & Cap nhat trang thai don
+    // Lắng nghe Socket realtime: Đơn mới & Cập nhật trạng thái đơn
     useEffect(() => {
         const handleNewOrder = (newOrder) => {
             playNotificationSound();
             setRealtimeAlert(
-                `Co don hang moi [${newOrder.orderCode}] tai ${newOrder.tableName} - Khach: ${newOrder.customerName}`
+                `Có đơn hàng mới [${newOrder.orderCode}] tại ${toVietnamese(newOrder.tableName)} - Khách: ${newOrder.customerName}`
             );
             setTimeout(() => setRealtimeAlert(""), 6000);
 
@@ -128,7 +129,7 @@ const OrdersBoardPage = () => {
         };
     }, [statusFilter]);
 
-    // Chuyen trang thai don (confirmed hoac completed)
+    // Chuyển trạng thái đơn (confirmed hoặc completed)
     const handleStatusChange = async (orderId, nextStatus, reason = "") => {
         try {
             setUpdatingId(orderId);
@@ -145,7 +146,7 @@ const OrdersBoardPage = () => {
             setCancelModalOrder(null);
             setCancelReason("");
         } catch (err) {
-            setError(typeof err === "string" ? err : "Cap nhat trang thai don that bai!");
+            setError(typeof err === "string" ? err : "Cập nhật trạng thái đơn thất bại!");
         } finally {
             setUpdatingId(null);
         }
@@ -154,13 +155,13 @@ const OrdersBoardPage = () => {
     const handleConfirmCancel = (e) => {
         e.preventDefault();
         if (!cancelReason.trim()) {
-            setError("Vui long nhap ly do huy don!");
+            setError("Vui lòng nhập lý do hủy đơn!");
             return;
         }
         handleStatusChange(cancelModalOrder._id, "cancelled", cancelReason.trim());
     };
 
-    // Thong ke nhanh
+    // Thống kê nhanh
     const pendingCount = orders.filter((o) => o.status === "pending").length;
     const confirmedCount = orders.filter((o) => o.status === "confirmed").length;
     const completedRevenue = orders
@@ -176,7 +177,7 @@ const OrdersBoardPage = () => {
                     dismissible
                     onClose={() => setRealtimeAlert("")}
                 >
-                    [THONG BAO REALTIME] {realtimeAlert}
+                    [THÔNG BÁO REALTIME] {realtimeAlert}
                 </Alert>
             )}
 
@@ -186,12 +187,12 @@ const OrdersBoardPage = () => {
                 </Alert>
             )}
 
-            {/* Thong ke nhanh */}
+            {/* Thống kê nhanh */}
             <Row className="g-3 mb-4">
                 <Col sm={6} md={3}>
                     <Card className="border-0 shadow-sm h-100">
                         <Card.Body className="py-3">
-                            <div className="text-muted small">Tong So Don</div>
+                            <div className="text-muted small">Tổng Số Đơn</div>
                             <div className="fs-4 fw-bold">{orders.length}</div>
                         </Card.Body>
                     </Card>
@@ -199,7 +200,7 @@ const OrdersBoardPage = () => {
                 <Col sm={6} md={3}>
                     <Card className="border-0 shadow-sm h-100 border-start border-4 border-warning">
                         <Card.Body className="py-3">
-                            <div className="text-muted small">Cho Xac Nhan</div>
+                            <div className="text-muted small">Chờ Xác Nhận</div>
                             <div className="fs-4 fw-bold text-warning">{pendingCount}</div>
                         </Card.Body>
                     </Card>
@@ -207,7 +208,7 @@ const OrdersBoardPage = () => {
                 <Col sm={6} md={3}>
                     <Card className="border-0 shadow-sm h-100 border-start border-4 border-primary">
                         <Card.Body className="py-3">
-                            <div className="text-muted small">Bep Dang Lam</div>
+                            <div className="text-muted small">Bếp Đang Làm</div>
                             <div className="fs-4 fw-bold text-primary">{confirmedCount}</div>
                         </Card.Body>
                     </Card>
@@ -215,16 +216,16 @@ const OrdersBoardPage = () => {
                 <Col sm={6} md={3}>
                     <Card className="border-0 shadow-sm h-100 border-start border-4 border-success">
                         <Card.Body className="py-3">
-                            <div className="text-muted small">Doanh Thu Hoan Thanh</div>
+                            <div className="text-muted small">Doanh Thu Hoàn Thành</div>
                             <div className="fs-4 fw-bold text-success">
-                                {completedRevenue.toLocaleString("vi-VN")} d
+                                {completedRevenue.toLocaleString("vi-VN")} đ
                             </div>
                         </Card.Body>
                     </Card>
                 </Col>
             </Row>
 
-            {/* Bo loc */}
+            {/* Bộ lọc */}
             <Card className="border-0 shadow-sm mb-4">
                 <Card.Body className="d-flex flex-wrap align-items-center justify-content-between gap-3">
                     <ButtonGroup className="flex-wrap">
@@ -233,40 +234,40 @@ const OrdersBoardPage = () => {
                             size="sm"
                             onClick={() => setStatusFilter("")}
                         >
-                            Tat Ca
+                            Tất Cả
                         </Button>
                         <Button
                             variant={statusFilter === "pending" ? "warning" : "outline-secondary"}
                             size="sm"
                             onClick={() => setStatusFilter("pending")}
                         >
-                            Cho Xac Nhan
+                            Chờ Xác Nhận
                         </Button>
                         <Button
                             variant={statusFilter === "confirmed" ? "primary" : "outline-secondary"}
                             size="sm"
                             onClick={() => setStatusFilter("confirmed")}
                         >
-                            Dang Chuan Bi
+                            Đang Chuẩn Bị
                         </Button>
                         <Button
                             variant={statusFilter === "completed" ? "success" : "outline-secondary"}
                             size="sm"
                             onClick={() => setStatusFilter("completed")}
                         >
-                            Hoan Thanh
+                            Hoàn Thành
                         </Button>
                         <Button
                             variant={statusFilter === "cancelled" ? "danger" : "outline-secondary"}
                             size="sm"
                             onClick={() => setStatusFilter("cancelled")}
                         >
-                            Da Huy
+                            Đã Hủy
                         </Button>
                     </ButtonGroup>
 
                     <div className="d-flex align-items-center gap-2">
-                        <Form.Label className="mb-0 small text-muted text-nowrap">Ngay:</Form.Label>
+                        <Form.Label className="mb-0 small text-muted text-nowrap">Ngày:</Form.Label>
                         <Form.Control
                             type="date"
                             size="sm"
@@ -275,24 +276,24 @@ const OrdersBoardPage = () => {
                             style={{ width: 155 }}
                         />
                         <Button variant="outline-primary" size="sm" onClick={fetchOrders}>
-                            Lam Moi
+                            Làm Mới
                         </Button>
                     </div>
                 </Card.Body>
             </Card>
 
-            {/* Danh sach the don hang */}
+            {/* Danh sách thẻ đơn hàng */}
             {loading ? (
                 <div className="text-center py-5">
                     <Spinner animation="border" variant="primary" />
-                    <p className="mt-2 text-muted">Dang tai danh sach don hang...</p>
+                    <p className="mt-2 text-muted">Đang tải danh sách đơn hàng...</p>
                 </div>
             ) : orders.length === 0 ? (
                 <Card className="border-0 shadow-sm text-center py-5">
                     <Card.Body>
-                        <h5 className="text-muted mb-1">Chua co don hang nao trong danh sach</h5>
+                        <h5 className="text-muted mb-1">Chưa có đơn hàng nào trong danh sách</h5>
                         <p className="small text-muted mb-0">
-                            Khi khach dat mon tai ban, don hang moi se tu dong hien thi ngay tai day.
+                            Khi khách đặt món tại bàn, đơn hàng mới sẽ tự động hiển thị ngay tại đây.
                         </p>
                     </Card.Body>
                 </Card>
@@ -315,7 +316,7 @@ const OrdersBoardPage = () => {
                                                 {order.orderCode}
                                             </span>
                                             <Badge bg="dark" className="ms-2">
-                                                {order.tableName}
+                                                {toVietnamese(order.tableName)}
                                             </Badge>
                                         </div>
                                         <Badge bg={badgeInfo.bg} text={badgeInfo.text}>
@@ -326,22 +327,22 @@ const OrdersBoardPage = () => {
                                     <Card.Body className="d-flex flex-column">
                                         <div className="small mb-2 text-muted">
                                             <div>
-                                                <strong>Khach hang:</strong> {order.customerName} (
+                                                <strong>Khách hàng:</strong> {order.customerName} (
                                                 {order.customerPhone})
                                             </div>
                                             <div>
-                                                <strong>Gio dat:</strong>{" "}
+                                                <strong>Giờ đặt:</strong>{" "}
                                                 {new Date(order.createdAt).toLocaleTimeString("vi-VN")}{" "}
                                                 - {new Date(order.createdAt).toLocaleDateString("vi-VN")}
                                             </div>
                                             {order.note && (
                                                 <div className="text-danger fw-semibold mt-1">
-                                                    Ghi chu: {order.note}
+                                                    Ghi chú: {order.note}
                                                 </div>
                                             )}
                                             {order.status === "cancelled" && order.cancelReason && (
                                                 <div className="text-danger mt-1">
-                                                    <strong>Ly do huy:</strong> {order.cancelReason}
+                                                    <strong>Lý do hủy:</strong> {order.cancelReason}
                                                 </div>
                                             )}
                                         </div>
@@ -349,15 +350,15 @@ const OrdersBoardPage = () => {
                                         <Table size="sm" className="small mb-3 align-middle">
                                             <thead className="table-light">
                                                 <tr>
-                                                    <th>Ten mon</th>
+                                                    <th>Tên món</th>
                                                     <th className="text-center">SL</th>
-                                                    <th className="text-end">Gia</th>
+                                                    <th className="text-end">Giá</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
                                                 {order.items.map((item, idx) => (
                                                     <tr key={idx}>
-                                                        <td>{item.name}</td>
+                                                        <td>{toVietnamese(item.name)}</td>
                                                         <td className="text-center fw-bold">
                                                             x{item.quantity}
                                                         </td>
@@ -365,7 +366,7 @@ const OrdersBoardPage = () => {
                                                             {(item.price * item.quantity).toLocaleString(
                                                                 "vi-VN"
                                                             )}{" "}
-                                                            d
+                                                            đ
                                                         </td>
                                                     </tr>
                                                 ))}
@@ -374,13 +375,13 @@ const OrdersBoardPage = () => {
 
                                         <div className="mt-auto pt-2 border-top">
                                             <div className="d-flex justify-content-between align-items-center mb-3">
-                                                <span className="small text-muted">Tong cong:</span>
+                                                <span className="small text-muted">Tổng cộng:</span>
                                                 <strong className="text-danger fs-5">
-                                                    {order.totalAmount.toLocaleString("vi-VN")} d
+                                                    {order.totalAmount.toLocaleString("vi-VN")} đ
                                                 </strong>
                                             </div>
 
-                                            {/* Cac nut thao tac trang thai */}
+                                            {/* Các nút thao tác trạng thái */}
                                             {order.status === "pending" && (
                                                 <div className="d-flex gap-2">
                                                     <Button
@@ -392,7 +393,7 @@ const OrdersBoardPage = () => {
                                                             handleStatusChange(order._id, "confirmed")
                                                         }
                                                     >
-                                                        Xac Nhan Don
+                                                        Xác Nhận Đơn
                                                     </Button>
                                                     <Button
                                                         variant="outline-danger"
@@ -403,7 +404,7 @@ const OrdersBoardPage = () => {
                                                             setCancelReason("");
                                                         }}
                                                     >
-                                                        Huy Don
+                                                        Hủy Đơn
                                                     </Button>
                                                 </div>
                                             )}
@@ -419,7 +420,7 @@ const OrdersBoardPage = () => {
                                                             handleStatusChange(order._id, "completed")
                                                         }
                                                     >
-                                                        Hoan Thanh / Da Phuc Vu
+                                                        Hoàn Thành / Đã Phục Vụ
                                                     </Button>
                                                     <Button
                                                         variant="outline-danger"
@@ -430,7 +431,7 @@ const OrdersBoardPage = () => {
                                                             setCancelReason("");
                                                         }}
                                                     >
-                                                        Huy Don
+                                                        Hủy Đơn
                                                     </Button>
                                                 </div>
                                             )}
@@ -443,7 +444,7 @@ const OrdersBoardPage = () => {
                 </Row>
             )}
 
-            {/* Modal nhap ly do huy don */}
+            {/* Modal nhập lý do hủy đơn */}
             <Modal
                 show={Boolean(cancelModalOrder)}
                 onHide={() => setCancelModalOrder(null)}
@@ -452,16 +453,16 @@ const OrdersBoardPage = () => {
                 <Form onSubmit={handleConfirmCancel}>
                     <Modal.Header closeButton>
                         <Modal.Title className="fs-5 fw-bold">
-                            Huy Don Hang {cancelModalOrder?.orderCode}
+                            Hủy Đơn Hàng {cancelModalOrder?.orderCode}
                         </Modal.Title>
                     </Modal.Header>
                     <Modal.Body>
                         <Form.Group>
-                            <Form.Label>Ly do huy don (*)</Form.Label>
+                            <Form.Label>Lý do hủy đơn (*)</Form.Label>
                             <Form.Control
                                 as="textarea"
                                 rows={3}
-                                placeholder="Vi du: Khach doi y hoac mon vua het nguyen lieu..."
+                                placeholder="Ví dụ: Khách đổi ý hoặc món vừa hết nguyên liệu..."
                                 value={cancelReason}
                                 onChange={(e) => setCancelReason(e.target.value)}
                                 required
@@ -470,7 +471,7 @@ const OrdersBoardPage = () => {
                     </Modal.Body>
                     <Modal.Footer>
                         <Button variant="secondary" size="sm" onClick={() => setCancelModalOrder(null)}>
-                            Dong
+                            Đóng
                         </Button>
                         <Button
                             type="submit"
@@ -478,7 +479,7 @@ const OrdersBoardPage = () => {
                             size="sm"
                             disabled={Boolean(updatingId)}
                         >
-                            Xac Nhan Huy Don
+                            Xác Nhận Hủy Đơn
                         </Button>
                     </Modal.Footer>
                 </Form>
@@ -488,4 +489,3 @@ const OrdersBoardPage = () => {
 };
 
 export default OrdersBoardPage;
-
