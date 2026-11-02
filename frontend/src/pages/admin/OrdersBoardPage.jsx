@@ -60,6 +60,7 @@ const playNotificationSound = () => {
 
 // Tinh do uu tien sap xep cho Don Dang Phuc Vu (nho hon = uu tien cao hon)
 const getActiveOrderPriority = (ord) => {
+    if (ord.feedback?.isBadFeedback && !ord.voidRefund?.isProcessed) return 0; // Uu tien cao nhat khi co feedback toi can xu ly
     if (ord.paymentRequested && ["confirmed", "served"].includes(ord.status)) return 1;
     if (ord.status === "pending") return 2;
     if (ord.status === "confirmed") return 3;
@@ -68,10 +69,12 @@ const getActiveOrderPriority = (ord) => {
 
 const OrdersBoardPage = () => {
     const [orders, setOrders] = useState([]);
+    const [tables, setTables] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [realtimeAlert, setRealtimeAlert] = useState("");
     const [paymentAlert, setPaymentAlert] = useState("");
+    const [badFeedbackAlert, setBadFeedbackAlert] = useState("");
 
     // Bo loc & Tim kiem
     const [statusFilter, setStatusFilter] = useState("");
@@ -86,9 +89,19 @@ const OrdersBoardPage = () => {
     // Dong ho cap nhat moi 30s de tinh so phut cho (SLA Timer)
     const [nowTick, setNowTick] = useState(Date.now());
 
-    // State cho Modal Huy don & Modal Xem chi tiet don
+    // State cho Modal Huy don, Modal Doi ban, Modal Void/Refund & Modal Xem chi tiet don
     const [cancelModalOrder, setCancelModalOrder] = useState(null);
     const [cancelReason, setCancelReason] = useState("");
+    const [changeTableModalOrder, setChangeTableModalOrder] = useState(null);
+    const [targetTableCode, setTargetTableCode] = useState("");
+    const [changeTableReasonText, setChangeTableReasonText] = useState("");
+    const [changingTable, setChangingTable] = useState(false);
+    const [voidRefundModalOrder, setVoidRefundModalOrder] = useState(null);
+    const [vrActionType, setVrActionType] = useState("void");
+    const [vrIncidentCategory, setVrIncidentCategory] = useState("staff");
+    const [vrRefundAmount, setVrRefundAmount] = useState(0);
+    const [vrReason, setVrReason] = useState("");
+    const [processingVoidRefund, setProcessingVoidRefund] = useState(false);
     const [detailModalOrder, setDetailModalOrder] = useState(null);
     const [updatingId, setUpdatingId] = useState(null);
     const [settlingTable, setSettlingTable] = useState("");
@@ -107,8 +120,12 @@ const OrdersBoardPage = () => {
             const params = new URLSearchParams();
             if (selectedDate) params.append("date", selectedDate);
 
-            const res = await axiosClient.get(`/orders?${params.toString()}`);
+            const [res, tableRes] = await Promise.all([
+                axiosClient.get(`/orders?${params.toString()}`),
+                axiosClient.get("/tables")
+            ]);
             setOrders(res.data?.data || res.data || []);
+            setTables(tableRes.data || tableRes || []);
         } catch (err) {
             setError(typeof err === "string" ? err : "Không thể tải danh sách đơn hàng!");
         } finally {
@@ -150,6 +167,10 @@ const OrdersBoardPage = () => {
                     String(ord._id) === String(payload.id)
                         ? {
                               ...ord,
+                              tableId: payload.tableId ?? ord.tableId,
+                              tableName: payload.tableName ?? ord.tableName,
+                              changeTableReason:
+                                  payload.changeTableReason ?? ord.changeTableReason,
                               status: payload.status ?? ord.status,
                               paymentRequested:
                                   payload.paymentRequested !== undefined
@@ -157,10 +178,27 @@ const OrdersBoardPage = () => {
                                       : ord.paymentRequested,
                               paymentMethod: payload.paymentMethod ?? ord.paymentMethod,
                               cancelReason: payload.cancelReason ?? ord.cancelReason,
+                              feedback: payload.feedback !== undefined ? payload.feedback : ord.feedback,
+                              voidRefund: payload.voidRefund !== undefined ? payload.voidRefund : ord.voidRefund,
                               updatedAt: payload.updatedAt || ord.updatedAt
                           }
                         : ord
                 )
+            );
+        };
+
+        const handleBadFeedback = (data) => {
+            playNotificationSound();
+            const catLabel =
+                data?.issueCategory === "staff"
+                    ? "Lỗi nhân viên"
+                    : data?.issueCategory === "ingredient"
+                    ? "Lỗi nguyên liệu"
+                    : "Lỗi cả nhân viên & nguyên liệu";
+            setBadFeedbackAlert(
+                `CẢNH BÁO SỰ CỐ: Bàn [${toVietnamese(
+                    data?.tableName || ""
+                )}] vừa gửi đánh giá ${data?.rating} sao (${catLabel}): "${data?.comment || ""}"`
             );
         };
 
@@ -177,14 +215,31 @@ const OrdersBoardPage = () => {
             );
         };
 
+        const handleTableUpdated = (updatedTable) => {
+            if (!updatedTable || !updatedTable._id) return;
+            setTables((prev) => {
+                const exists = prev.some((t) => String(t._id) === String(updatedTable._id));
+                if (exists) {
+                    return prev.map((t) =>
+                        String(t._id) === String(updatedTable._id) ? updatedTable : t
+                    );
+                }
+                return [...prev, updatedTable].sort((a, b) => a.code.localeCompare(b.code));
+            });
+        };
+
         socket.on("order:new", handleNewOrder);
         socket.on("order:updated", handleOrderUpdated);
+        socket.on("order:bad_feedback", handleBadFeedback);
         socket.on("order:payment_requested", handlePaymentRequested);
+        socket.on("table:updated", handleTableUpdated);
 
         return () => {
             socket.off("order:new", handleNewOrder);
             socket.off("order:updated", handleOrderUpdated);
+            socket.off("order:bad_feedback", handleBadFeedback);
             socket.off("order:payment_requested", handlePaymentRequested);
+            socket.off("table:updated", handleTableUpdated);
         };
     }, []);
 
@@ -233,6 +288,20 @@ const OrdersBoardPage = () => {
         }
     };
 
+    const handleToggleTableOccupancy = async (table, nextOccupied) => {
+        try {
+            const res = await axiosClient.patch(`/tables/${table._id}/occupancy`, {
+                isOccupied: nextOccupied
+            });
+            const updated = res.data || res;
+            setTables((prev) =>
+                prev.map((t) => (String(t._id) === String(table._id) ? updated : t))
+            );
+        } catch (err) {
+            setError(typeof err === "string" ? err : "Cập nhật trạng thái bàn thất bại!");
+        }
+    };
+
     const handleConfirmCancel = (e) => {
         e.preventDefault();
         if (!cancelReason.trim()) {
@@ -240,6 +309,103 @@ const OrdersBoardPage = () => {
             return;
         }
         handleStatusChange(cancelModalOrder._id, "cancelled", cancelReason.trim());
+    };
+
+    const handleConfirmChangeTable = async (e) => {
+        e.preventDefault();
+        if (!changeTableModalOrder || !targetTableCode) {
+            setError("Vui lòng chọn bàn trống muốn chuyển đến!");
+            return;
+        }
+        if (!changeTableReasonText.trim()) {
+            setError("Vui lòng nhập lý do đổi bàn!");
+            return;
+        }
+        try {
+            setChangingTable(true);
+            setError("");
+            const res = await axiosClient.patch(
+                `/orders/${changeTableModalOrder._id}/change-table`,
+                {
+                    newTableCode: targetTableCode,
+                    reason: changeTableReasonText.trim()
+                }
+            );
+            const updatedOrder = res.data?.order || res.order || res.data;
+            if (updatedOrder && updatedOrder._id) {
+                setOrders((prev) =>
+                    prev.map((ord) =>
+                        String(ord._id) === String(updatedOrder._id) ? updatedOrder : ord
+                    )
+                );
+            }
+            setRealtimeAlert(
+                `Đã chuyển đơn [${changeTableModalOrder.orderCode}] sang bàn ${targetTableCode} thành công!`
+            );
+            setTimeout(() => setRealtimeAlert(""), 5000);
+            setChangeTableModalOrder(null);
+            setTargetTableCode("");
+            setChangeTableReasonText("");
+        } catch (err) {
+            setError(typeof err === "string" ? err : "Đổi bàn cho đơn hàng thất bại!");
+        } finally {
+            setChangingTable(false);
+        }
+    };
+
+    const handleOpenVoidRefund = (order) => {
+        setVoidRefundModalOrder(order);
+        const defaultAction = ["pending", "confirmed", "served"].includes(order.status)
+            ? "void"
+            : "full_refund";
+        setVrActionType(defaultAction);
+        const cat =
+            order.feedback?.issueCategory && order.feedback.issueCategory !== "none"
+                ? order.feedback.issueCategory
+                : "staff";
+        setVrIncidentCategory(cat);
+        setVrRefundAmount(order.totalAmount || 0);
+        setVrReason(order.feedback?.comment ? `Sự cố: ${order.feedback.comment}` : "");
+    };
+
+    const handleConfirmVoidRefund = async (e) => {
+        e.preventDefault();
+        if (!voidRefundModalOrder) return;
+        if (!vrReason.trim()) {
+            setError("Vui lòng nhập biên bản / lý do xử lý sự cố!");
+            return;
+        }
+
+        try {
+            setProcessingVoidRefund(true);
+            setError("");
+            const res = await axiosClient.post(
+                `/orders/${voidRefundModalOrder._id}/void-refund`,
+                {
+                    actionType: vrActionType,
+                    incidentCategory: vrIncidentCategory,
+                    refundAmount: Number(vrRefundAmount),
+                    reason: vrReason.trim()
+                }
+            );
+            const updated = res.data?.data || res.data;
+            if (updated && updated._id) {
+                setOrders((prev) =>
+                    prev.map((o) => (String(o._id) === String(updated._id) ? updated : o))
+                );
+            }
+            setRealtimeAlert(res.data?.message || "Đã xử lý sự cố thành công!");
+            setTimeout(() => setRealtimeAlert(""), 6000);
+            setVoidRefundModalOrder(null);
+        } catch (err) {
+            const msg =
+                err?.response?.data?.error ||
+                err?.response?.data?.message ||
+                (typeof err === "string" ? err : "Xử lý sự cố thất bại!");
+            setError(msg);
+        } finally {
+            setProcessingVoidRefund(false);
+        }
     };
 
     // Danh sach cac ban co don trong ngay de hien thi dropdown loc ban
@@ -310,6 +476,11 @@ const OrdersBoardPage = () => {
     const completedRevenue = orders
         .filter((o) => o.status === "completed")
         .reduce((sum, o) => sum + (o.totalAmount || 0), 0);
+    const totalRefunded = orders.reduce((sum, o) => {
+        return sum + (o.voidRefund?.isProcessed ? o.voidRefund.refundAmount || 0 : 0);
+    }, 0);
+    const netRevenue = Math.max(0, completedRevenue - totalRefunded);
+    const badFeedbackCount = orders.filter((o) => o.feedback?.isBadFeedback).length;
 
     // Tinh toan phan trang cho Khu vuc 1 (Don Dang Phuc Vu)
     const totalActivePages = Math.max(1, Math.ceil(activeOrders.length / ACTIVE_PAGE_SIZE));
@@ -409,6 +580,17 @@ const OrdersBoardPage = () => {
                 </Alert>
             )}
 
+            {badFeedbackAlert && (
+                <Alert
+                    variant="danger"
+                    className="fw-bold shadow-sm border-danger"
+                    dismissible
+                    onClose={() => setBadFeedbackAlert("")}
+                >
+                    [CẢNH BÁO SỰ CỐ TỪ KHÁCH HÀNG] {badFeedbackAlert}
+                </Alert>
+            )}
+
             {paymentAlert && (
                 <Alert
                     variant="warning"
@@ -505,14 +687,94 @@ const OrdersBoardPage = () => {
                         }
                     >
                         <Card.Body className="py-3">
-                            <div className="text-muted small">Doanh Thu Đã Thu</div>
-                            <div className="fs-4 fw-bold text-success">
-                                {completedRevenue.toLocaleString("vi-VN")} đ
+                            <div className="d-flex justify-content-between align-items-center">
+                                <div className="text-muted small">Doanh Thu Thực Thu</div>
+                                {totalRefunded > 0 && (
+                                    <Badge bg="danger" className="small">
+                                        Hoàn tiền: -{totalRefunded.toLocaleString("vi-VN")} đ
+                                    </Badge>
+                                )}
                             </div>
+                            <div className="fs-4 fw-bold text-success">
+                                {netRevenue.toLocaleString("vi-VN")} đ
+                            </div>
+                            {totalRefunded > 0 && (
+                                <div className="text-muted" style={{ fontSize: "0.75rem" }}>
+                                    Tổng thu gốc: {completedRevenue.toLocaleString("vi-VN")} đ
+                                </div>
+                            )}
                         </Card.Body>
                     </Card>
                 </Col>
             </Row>
+
+            {/* So do trang thai ban thuc te: Phan biet Ban Trong / Dang Phuc Vu / Da Thanh Toan nhung Khach Chua Roi Ban */}
+            {tables.length > 0 && (
+                <Card className="border-0 shadow-sm mb-3">
+                    <Card.Body className="py-2 px-3">
+                        <div className="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+                            <span className="fw-bold small text-dark">
+                                Trạng Thái Bàn Thực Tế (Bấm &quot;Làm Trống&quot; khi khách đã rời bàn):
+                            </span>
+                            <div className="d-flex flex-wrap gap-3 small">
+                                <span className="text-success fw-semibold">
+                                    Bàn trống: {tables.filter((t) => t.isActive && !t.isOccupied).length}
+                                </span>
+                                <span className="text-danger fw-semibold">
+                                    Đang có khách: {tables.filter((t) => t.isActive && t.isOccupied).length}
+                                </span>
+                            </div>
+                        </div>
+                        <div className="d-flex flex-wrap gap-2">
+                            {tables
+                                .filter((t) => t.isActive)
+                                .map((t) => {
+                                    const hasUnpaid = orders.some(
+                                        (o) =>
+                                            o.tableName === t.name &&
+                                            ["pending", "confirmed", "served"].includes(o.status)
+                                    );
+                                    const isPaidWaitingLeave = t.isOccupied && !hasUnpaid;
+
+                                    return (
+                                        <div
+                                            key={t._id}
+                                            className={`d-inline-flex align-items-center gap-2 px-2 py-1 rounded border small ${
+                                                !t.isOccupied
+                                                    ? "bg-success-subtle border-success text-success"
+                                                    : isPaidWaitingLeave
+                                                      ? "bg-warning-subtle border-warning text-dark"
+                                                      : "bg-danger-subtle border-danger text-danger"
+                                            }`}
+                                        >
+                                            <span className="fw-bold">
+                                                {toVietnamese(t.name)} ({t.code}):
+                                            </span>
+                                            <span>
+                                                {!t.isOccupied
+                                                    ? "Trống"
+                                                    : isPaidWaitingLeave
+                                                      ? "Đã TT - Khách chưa rời bàn"
+                                                      : "Đang phục vụ"}
+                                            </span>
+                                            {t.isOccupied && (
+                                                <Button
+                                                    variant={isPaidWaitingLeave ? "dark" : "outline-danger"}
+                                                    size="sm"
+                                                    className="py-0 px-2 fw-bold"
+                                                    style={{ fontSize: "0.72rem" }}
+                                                    onClick={() => handleToggleTableOccupancy(t, false)}
+                                                >
+                                                    Làm Trống
+                                                </Button>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                        </div>
+                    </Card.Body>
+                </Card>
+            )}
 
             {/* Thanh cong cu: Bo loc trang thai + Loc theo Ban + Tim kiem + Chon ngay */}
             <Card className="border-0 shadow-sm mb-4">
@@ -690,6 +952,11 @@ const OrdersBoardPage = () => {
 
                                             let cardBorderClass = "border-0";
                                             if (
+                                                order.feedback?.isBadFeedback &&
+                                                !order.voidRefund?.isProcessed
+                                            ) {
+                                                cardBorderClass = "border-danger border-3";
+                                            } else if (
                                                 order.paymentRequested &&
                                                 ["confirmed", "served"].includes(order.status)
                                             ) {
@@ -704,13 +971,26 @@ const OrdersBoardPage = () => {
                                                         className={`h-100 shadow-sm ${cardBorderClass}`}
                                                     >
                                                         <Card.Header className="bg-white d-flex justify-content-between align-items-center py-2">
-                                                            <div>
+                                                            <div className="d-flex align-items-center flex-wrap gap-1">
                                                                 <span className="fw-bold text-primary fs-6">
                                                                     {order.orderCode}
                                                                 </span>
-                                                                <Badge bg="dark" className="ms-2">
+                                                                <Badge bg="dark" className="ms-1">
                                                                     {toVietnamese(order.tableName)}
                                                                 </Badge>
+                                                                <Button
+                                                                    variant="outline-primary"
+                                                                    size="sm"
+                                                                    className="py-0 px-2 fw-semibold ms-1"
+                                                                    style={{ fontSize: "0.72rem" }}
+                                                                    onClick={() => {
+                                                                        setChangeTableModalOrder(order);
+                                                                        setTargetTableCode("");
+                                                                        setChangeTableReasonText("");
+                                                                    }}
+                                                                >
+                                                                    Đổi Bàn
+                                                                </Button>
                                                             </div>
                                                             <Badge
                                                                 bg={badgeInfo.bg}
@@ -752,12 +1032,47 @@ const OrdersBoardPage = () => {
                                                                     </div>
                                                                 )}
 
+                                                            {order.feedback?.isBadFeedback && (
+                                                                <div className="bg-danger text-white fw-bold small p-2 rounded mb-2">
+                                                                    <div className="d-flex justify-content-between align-items-center">
+                                                                        <span>SỰ CỐ: {order.feedback.rating} Sao ({order.feedback.issueCategory === "staff" ? "Lỗi nhân viên" : order.feedback.issueCategory === "ingredient" ? "Lỗi nguyên liệu" : "Lỗi cả 2"})</span>
+                                                                        <Button
+                                                                            variant="light"
+                                                                            size="sm"
+                                                                            className="py-0 px-2 fw-bold text-danger"
+                                                                            style={{ fontSize: "0.75rem" }}
+                                                                            onClick={() => handleOpenVoidRefund(order)}
+                                                                        >
+                                                                            Void / Hoàn Tiền
+                                                                        </Button>
+                                                                    </div>
+                                                                    {order.feedback.comment && (
+                                                                        <div className="fst-italic mt-1 text-white-50">
+                                                                            "{order.feedback.comment}"
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            )}
+
+                                                            {order.voidRefund && order.voidRefund.isProcessed && (
+                                                                <div className="bg-warning-subtle text-dark border border-warning rounded p-2 small mb-2">
+                                                                    <strong>Đã xử lý {order.voidRefund.actionType === "void" ? "Void (Miễn thu)" : "Hoàn tiền"}:</strong> {order.voidRefund.reason}
+                                                                </div>
+                                                            )}
+
                                                             <div className="small mb-2 text-muted">
                                                                 <div>
                                                                     <strong>Khách:</strong>{" "}
-                                                                    {order.customerName} (
-                                                                    {order.customerPhone})
+                                                                    {toVietnamese(order.customerName)}
+                                                                    {order.customerPhone
+                                                                        ? ` (${order.customerPhone})`
+                                                                        : ""}
                                                                 </div>
+                                                                {order.changeTableReason && (
+                                                                    <div className="text-primary fw-semibold mt-1">
+                                                                        Đổi bàn: {toVietnamese(order.changeTableReason)}
+                                                                    </div>
+                                                                )}
                                                                 {order.note && (
                                                                     <div className="text-danger fw-semibold mt-1">
                                                                         Ghi chú: {order.note}
@@ -936,6 +1251,14 @@ const OrdersBoardPage = () => {
                                                                                 Hủy Đơn
                                                                             </Button>
                                                                         </div>
+                                                                        <Button
+                                                                            variant="outline-warning"
+                                                                            size="sm"
+                                                                            className="w-100 fw-semibold"
+                                                                            onClick={() => handleOpenVoidRefund(order)}
+                                                                        >
+                                                                            Xử Lý Sự Cố (Void / Miễn Thu)
+                                                                        </Button>
                                                                         {order.paymentRequested && (
                                                                             <Button
                                                                                 variant="success"
@@ -997,6 +1320,14 @@ const OrdersBoardPage = () => {
                                                                                 Hủy
                                                                             </Button>
                                                                         </div>
+                                                                        <Button
+                                                                            variant="outline-warning"
+                                                                            size="sm"
+                                                                            className="w-100 fw-semibold"
+                                                                            onClick={() => handleOpenVoidRefund(order)}
+                                                                        >
+                                                                            Void / Miễn Thu Sự Cố
+                                                                        </Button>
 
                                                                         {sameTableUnpaid.length >
                                                                             1 && (
@@ -1179,6 +1510,17 @@ const OrdersBoardPage = () => {
                                                                 <div className="text-truncate">
                                                                     {summaryText}
                                                                 </div>
+                                                                {ord.feedback?.rating && (
+                                                                    <div className={ord.feedback.isBadFeedback ? "text-danger fw-semibold" : "text-success fw-semibold"}>
+                                                                        Đánh giá: {ord.feedback.rating} Sao
+                                                                        {ord.feedback.issueCategory !== "none" && ` (${ord.feedback.issueCategory === "staff" ? "Lỗi nhân viên" : ord.feedback.issueCategory === "ingredient" ? "Lỗi nguyên liệu" : "Lỗi cả 2"})`}
+                                                                    </div>
+                                                                )}
+                                                                {ord.voidRefund && ord.voidRefund.isProcessed && (
+                                                                    <div className="text-warning-emphasis fw-semibold">
+                                                                        {ord.voidRefund.actionType === "void" ? "[VOID MIỄN THU]" : "[HOÀN TIỀN]"}: {ord.voidRefund.reason}
+                                                                    </div>
+                                                                )}
                                                                 {ord.status === "cancelled" &&
                                                                     ord.cancelReason && (
                                                                         <div className="text-danger">
@@ -1192,6 +1534,11 @@ const OrdersBoardPage = () => {
                                                                     ord.totalAmount || 0
                                                                 ).toLocaleString("vi-VN")}{" "}
                                                                 đ
+                                                                {ord.voidRefund && ord.voidRefund.isProcessed && ord.voidRefund.refundAmount > 0 && (
+                                                                    <div className="text-success small fw-semibold">
+                                                                        Hoàn: -{ord.voidRefund.refundAmount.toLocaleString("vi-VN")} đ
+                                                                    </div>
+                                                                )}
                                                             </td>
                                                             <td className="text-center">
                                                                 <Badge
@@ -1201,7 +1548,7 @@ const OrdersBoardPage = () => {
                                                                     {badgeInfo.label}
                                                                 </Badge>
                                                             </td>
-                                                            <td className="text-end pe-3">
+                                                            <td className="text-end pe-3 text-nowrap">
                                                                 <Button
                                                                     variant="outline-secondary"
                                                                     size="sm"
@@ -1211,6 +1558,22 @@ const OrdersBoardPage = () => {
                                                                 >
                                                                     Chi Tiết
                                                                 </Button>
+                                                                {ord.status === "completed" && (
+                                                                    ord.voidRefund && ord.voidRefund.isProcessed ? (
+                                                                        <Badge bg="warning" text="dark" className="ms-1">
+                                                                            Đã Hoàn Tiền
+                                                                        </Badge>
+                                                                    ) : (
+                                                                        <Button
+                                                                            variant="outline-warning"
+                                                                            size="sm"
+                                                                            className="ms-1 fw-semibold"
+                                                                            onClick={() => handleOpenVoidRefund(ord)}
+                                                                        >
+                                                                            Hoàn Tiền
+                                                                        </Button>
+                                                                    )
+                                                                )}
                                                             </td>
                                                         </tr>
                                                     );
@@ -1292,13 +1655,22 @@ const OrdersBoardPage = () => {
                                     </Badge>
                                 </div>
                                 <div>
-                                    <strong>Khách hàng:</strong> {detailModalOrder.customerName} (
-                                    {detailModalOrder.customerPhone})
+                                    <strong>Khách hàng:</strong>{" "}
+                                    {toVietnamese(detailModalOrder.customerName)}
+                                    {detailModalOrder.customerPhone
+                                        ? ` (${detailModalOrder.customerPhone})`
+                                        : ""}
                                 </div>
                                 <div>
                                     <strong>Thời gian đặt:</strong>{" "}
                                     {new Date(detailModalOrder.createdAt).toLocaleString("vi-VN")}
                                 </div>
+                                {detailModalOrder.changeTableReason && (
+                                    <div className="text-primary fw-semibold mt-1">
+                                        <strong>Lịch sử đổi bàn:</strong>{" "}
+                                        {toVietnamese(detailModalOrder.changeTableReason)}
+                                    </div>
+                                )}
                                 {detailModalOrder.note && (
                                     <div className="text-danger mt-1">
                                         <strong>Ghi chú:</strong> {detailModalOrder.note}
@@ -1311,6 +1683,30 @@ const OrdersBoardPage = () => {
                                             {detailModalOrder.cancelReason}
                                         </div>
                                     )}
+                                {detailModalOrder.feedback?.rating && (
+                                    <div className={`mt-2 p-2 rounded border small ${detailModalOrder.feedback.isBadFeedback ? "bg-danger-subtle border-danger text-danger-emphasis" : "bg-success-subtle border-success text-success-emphasis"}`}>
+                                        <div className="fw-bold">
+                                            Đánh giá của khách: {detailModalOrder.feedback.rating} Sao
+                                            {detailModalOrder.feedback.issueCategory !== "none" && (
+                                                <span className="ms-1">
+                                                    (Phản ánh: {detailModalOrder.feedback.issueCategory === "staff" ? "Lỗi nhân viên" : detailModalOrder.feedback.issueCategory === "ingredient" ? "Lỗi nguyên liệu" : "Lỗi cả nhân viên & nguyên liệu"})
+                                                </span>
+                                            )}
+                                        </div>
+                                        {detailModalOrder.feedback.comment && (
+                                            <div className="fst-italic mt-1">"{detailModalOrder.feedback.comment}"</div>
+                                        )}
+                                    </div>
+                                )}
+                                {detailModalOrder.voidRefund && detailModalOrder.voidRefund.isProcessed && (
+                                    <div className="mt-2 p-2 rounded border border-warning bg-warning-subtle text-dark small">
+                                        <div className="fw-bold">
+                                            Đã xử lý {detailModalOrder.voidRefund.actionType === "void" ? "Void (Miễn thu)" : "Hoàn tiền"} ({detailModalOrder.voidRefund.refundAmount.toLocaleString("vi-VN")} đ)
+                                        </div>
+                                        <div><strong>Người xử lý:</strong> {detailModalOrder.voidRefund.processedBy} - <strong>Thời gian:</strong> {new Date(detailModalOrder.voidRefund.processedAt).toLocaleString("vi-VN")}</div>
+                                        <div><strong>Lý do giải trình:</strong> {detailModalOrder.voidRefund.reason}</div>
+                                    </div>
+                                )}
                             </div>
 
                             <Table size="sm" className="small align-middle mb-0">
@@ -1362,6 +1758,20 @@ const OrdersBoardPage = () => {
                     )}
                 </Modal.Body>
                 <Modal.Footer>
+                    {detailModalOrder && detailModalOrder.status === "completed" && !detailModalOrder.voidRefund?.isProcessed && (
+                        <Button
+                            variant="outline-warning"
+                            size="sm"
+                            className="fw-semibold me-auto"
+                            onClick={() => {
+                                const o = detailModalOrder;
+                                setDetailModalOrder(null);
+                                handleOpenVoidRefund(o);
+                            }}
+                        >
+                            Hoàn Tiền Sự Cố
+                        </Button>
+                    )}
                     <Button
                         variant="secondary"
                         size="sm"
@@ -1412,6 +1822,237 @@ const OrdersBoardPage = () => {
                             disabled={Boolean(updatingId)}
                         >
                             Xác Nhận Hủy Đơn
+                        </Button>
+                    </Modal.Footer>
+                </Form>
+            </Modal>
+
+            {/* Modal doi ban cho don hang dang phuc vu (chi cho chon ban dang trong) */}
+            <Modal
+                show={Boolean(changeTableModalOrder)}
+                onHide={() => setChangeTableModalOrder(null)}
+                centered
+            >
+                <Form onSubmit={handleConfirmChangeTable}>
+                    <Modal.Header closeButton>
+                        <Modal.Title className="fs-5 fw-bold">
+                            Đổi Bàn Cho Đơn Hàng {changeTableModalOrder?.orderCode}
+                        </Modal.Title>
+                    </Modal.Header>
+                    <Modal.Body>
+                        {changeTableModalOrder && (
+                            <>
+                                <div className="mb-3 small bg-light p-2 rounded">
+                                    <div>
+                                        <strong>Bàn hiện tại:</strong>{" "}
+                                        <span className="text-primary fw-bold">
+                                            {toVietnamese(changeTableModalOrder.tableName)}
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <strong>Khách hàng:</strong>{" "}
+                                        {toVietnamese(changeTableModalOrder.customerName)}
+                                    </div>
+                                </div>
+
+                                <Form.Group>
+                                    <Form.Label className="fw-semibold">
+                                        Chọn bàn mới (Chỉ hiển thị các bàn đang trống) (*)
+                                    </Form.Label>
+                                    <Form.Select
+                                        value={targetTableCode}
+                                        onChange={(e) => setTargetTableCode(e.target.value)}
+                                        required
+                                    >
+                                        <option value="">-- Chọn bàn đang trống --</option>
+                                        {tables
+                                            .filter((t) => t.isActive && !t.isOccupied)
+                                            .map((t) => (
+                                                <option key={t._id} value={t.code}>
+                                                    {toVietnamese(t.name)} ({t.code}) - Bàn trống
+                                                </option>
+                                            ))}
+                                    </Form.Select>
+                                    {tables.filter((t) => t.isActive && !t.isOccupied).length ===
+                                        0 && (
+                                        <Form.Text className="text-danger">
+                                            Hiện tại không còn bàn nào đang trống để chuyển!
+                                        </Form.Text>
+                                    )}
+                                </Form.Group>
+
+                                <Form.Group className="mt-3">
+                                    <Form.Label className="fw-semibold">
+                                        Lý do đổi bàn (*)
+                                    </Form.Label>
+                                    <Form.Control
+                                        as="textarea"
+                                        rows={2}
+                                        placeholder="Ví dụ: Bàn cũ hơi nóng / Khách muốn ngồi gần cửa sổ..."
+                                        value={changeTableReasonText}
+                                        onChange={(e) => setChangeTableReasonText(e.target.value)}
+                                        required
+                                    />
+                                </Form.Group>
+                            </>
+                        )}
+                    </Modal.Body>
+                    <Modal.Footer>
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => setChangeTableModalOrder(null)}
+                        >
+                            Đóng
+                        </Button>
+                        <Button
+                            type="submit"
+                            variant="primary"
+                            size="sm"
+                            disabled={
+                                changingTable ||
+                                !targetTableCode ||
+                                !changeTableReasonText.trim() ||
+                                tables.filter((t) => t.isActive && !t.isOccupied).length === 0
+                            }
+                        >
+                            {changingTable ? "Đang chuyển bàn..." : "Xác Nhận Đổi Bàn"}
+                        </Button>
+                    </Modal.Footer>
+                </Form>
+            </Modal>
+
+            {/* Modal Xu Ly Su Co (Void / Hoan Tien) */}
+            <Modal
+                show={Boolean(voidRefundModalOrder)}
+                onHide={() => setVoidRefundModalOrder(null)}
+                centered
+            >
+                <Form onSubmit={handleConfirmVoidRefund}>
+                    <Modal.Header closeButton>
+                        <Modal.Title className="fs-5 fw-bold text-danger">
+                            Xử Lý Sự Cố (Void / Hoàn Tiền) - Đơn {voidRefundModalOrder?.orderCode}
+                        </Modal.Title>
+                    </Modal.Header>
+                    <Modal.Body>
+                        {voidRefundModalOrder && (
+                            <>
+                                {voidRefundModalOrder.feedback?.isBadFeedback && (
+                                    <Alert variant="danger" className="py-2 small mb-3">
+                                        <div className="fw-bold">
+                                            Phản hồi của khách ({voidRefundModalOrder.feedback.rating} Sao):
+                                        </div>
+                                        <div>
+                                            Lỗi phản ánh: {voidRefundModalOrder.feedback.issueCategory === "staff" ? "Thái độ nhân viên" : voidRefundModalOrder.feedback.issueCategory === "ingredient" ? "Chất lượng nguyên liệu / món" : "Cả nhân viên & nguyên liệu"}
+                                        </div>
+                                        {voidRefundModalOrder.feedback.comment && (
+                                            <div className="fst-italic mt-1">
+                                                "{voidRefundModalOrder.feedback.comment}"
+                                            </div>
+                                        )}
+                                    </Alert>
+                                )}
+
+                                <div className="bg-light p-2 rounded mb-3 small">
+                                    <div><strong>Bàn:</strong> {toVietnamese(voidRefundModalOrder.tableName)} - <strong>Khách:</strong> {toVietnamese(voidRefundModalOrder.customerName)}</div>
+                                    <div><strong>Tổng đơn gốc:</strong> <span className="text-danger fw-bold">{voidRefundModalOrder.totalAmount.toLocaleString("vi-VN")} đ</span></div>
+                                    <div><strong>Trạng thái hiện tại:</strong> {STATUS_BADGE[voidRefundModalOrder.status]?.label || voidRefundModalOrder.status}</div>
+                                </div>
+
+                                <Form.Group className="mb-3">
+                                    <Form.Label className="fw-semibold">
+                                        Hình thức xử lý sự cố (*)
+                                    </Form.Label>
+                                    {["pending", "confirmed", "served"].includes(voidRefundModalOrder.status) ? (
+                                        <Form.Select
+                                            value={vrActionType}
+                                            onChange={(e) => setVrActionType(e.target.value)}
+                                        >
+                                            <option value="void">Hủy đơn miễn thu tiền (Void) - Đơn chưa thanh toán</option>
+                                        </Form.Select>
+                                    ) : (
+                                        <Form.Select
+                                            value={vrActionType}
+                                            onChange={(e) => {
+                                                const act = e.target.value;
+                                                setVrActionType(act);
+                                                if (act === "full_refund") {
+                                                    setVrRefundAmount(voidRefundModalOrder.totalAmount);
+                                                }
+                                            }}
+                                        >
+                                            <option value="full_refund">Hoàn tiền toàn bộ 100% ({voidRefundModalOrder.totalAmount.toLocaleString("vi-VN")} đ)</option>
+                                            <option value="partial_refund">Hoàn tiền một phần (Tùy chỉnh số tiền)</option>
+                                        </Form.Select>
+                                    )}
+                                </Form.Group>
+
+                                <Form.Group className="mb-3">
+                                    <Form.Label className="fw-semibold">
+                                        Nguyên nhân sự cố (*)
+                                    </Form.Label>
+                                    <Form.Select
+                                        value={vrIncidentCategory}
+                                        onChange={(e) => setVrIncidentCategory(e.target.value)}
+                                        required
+                                    >
+                                        <option value="staff">Lỗi do thái độ / phục vụ của Nhân Viên</option>
+                                        <option value="ingredient">Lỗi do chất lượng Nguyên Liệu / Món Ăn (nguội, hỏng, vị lạ...)</option>
+                                        <option value="both">Lỗi do Cả Nhân Viên và Nguyên Liệu</option>
+                                    </Form.Select>
+                                </Form.Group>
+
+                                {vrActionType === "partial_refund" && (
+                                    <Form.Group className="mb-3">
+                                        <Form.Label className="fw-semibold">
+                                            Số tiền hoàn lại cho khách (đ) (*)
+                                        </Form.Label>
+                                        <Form.Control
+                                            type="number"
+                                            min={1}
+                                            max={voidRefundModalOrder.totalAmount}
+                                            step={1000}
+                                            value={vrRefundAmount}
+                                            onChange={(e) => setVrRefundAmount(Number(e.target.value))}
+                                            required
+                                        />
+                                        <Form.Text className="text-muted">
+                                            Tối đa: {voidRefundModalOrder.totalAmount.toLocaleString("vi-VN")} đ
+                                        </Form.Text>
+                                    </Form.Group>
+                                )}
+
+                                <Form.Group className="mb-3">
+                                    <Form.Label className="fw-semibold">
+                                        Biên bản / Lý do giải trình sự cố (*)
+                                    </Form.Label>
+                                    <Form.Control
+                                        as="textarea"
+                                        rows={3}
+                                        placeholder="Ví dụ: Đền bù cho khách do nhân viên sơ ý làm đổ nước / món ăn bị mặn..."
+                                        value={vrReason}
+                                        onChange={(e) => setVrReason(e.target.value)}
+                                        required
+                                    />
+                                </Form.Group>
+                            </>
+                        )}
+                    </Modal.Body>
+                    <Modal.Footer>
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => setVoidRefundModalOrder(null)}
+                        >
+                            Đóng
+                        </Button>
+                        <Button
+                            type="submit"
+                            variant="danger"
+                            size="sm"
+                            disabled={processingVoidRefund}
+                        >
+                            {processingVoidRefund ? "Đang xử lý..." : "Xác Nhận Xử Lý Sự Cố"}
                         </Button>
                     </Modal.Footer>
                 </Form>

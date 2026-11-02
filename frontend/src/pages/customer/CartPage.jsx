@@ -30,6 +30,11 @@ const CartPage = () => {
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
 
+    // Kiem tra don chua thanh toan trong phien hien tai (pending, confirmed, served)
+    const unpaidOrder = sessionOrders.find((ord) =>
+        ["pending", "confirmed", "served"].includes(ord.status)
+    );
+
     // Tu dong dien thong tin neu da dang nhap
     useEffect(() => {
         if (user) {
@@ -42,6 +47,12 @@ const CartPage = () => {
         e.preventDefault();
         setError("");
 
+        if (unpaidOrder) {
+            setError(
+                `Bạn đang có đơn hàng [${unpaidOrder.orderCode}] chưa thanh toán xong! Vui lòng hoàn tất thanh toán đơn hiện tại trước khi tạo đơn mới.`
+            );
+            return;
+        }
         if (!tableCode) {
             setError("Vui lòng chọn bàn trước khi gửi đơn!");
             return;
@@ -50,13 +61,9 @@ const CartPage = () => {
             setError("Giỏ hàng đang trống!");
             return;
         }
-        if (!customerName.trim()) {
-            setError("Vui lòng nhập họ tên!");
-            return;
-        }
         const phoneRegex = /^0[0-9]{9}$/;
-        if (!phoneRegex.test(customerPhone.trim())) {
-            setError("Số điện thoại phải đủ 10 chữ số và bắt đầu bằng số 0!");
+        if (customerPhone.trim() && !phoneRegex.test(customerPhone.trim())) {
+            setError("Số điện thoại phải đủ 10 chữ số và bắt đầu bằng số 0 (hoặc bỏ trống)!");
             return;
         }
 
@@ -110,6 +117,11 @@ const CartPage = () => {
             {/* Khung dat mon moi (chi hien thi khi khach dang co mon trong gio) */}
             {cartItems.length > 0 && (
                 <div className="mb-5">
+                    {unpaidOrder && (
+                        <Alert variant="warning" className="fw-semibold shadow-sm border-warning">
+                            Bàn hiện đang có đơn hàng <strong>[{unpaidOrder.orderCode}]</strong> chưa thanh toán xong. Theo quy định của quán, vui lòng hoàn tất thanh toán đơn hiện tại (hoặc hủy đơn nếu đang chờ xác nhận) trước khi gửi đơn hàng mới!
+                        </Alert>
+                    )}
                     {error && <Alert variant="danger">{error}</Alert>}
 
                     <Row className="g-4">
@@ -274,24 +286,22 @@ const CartPage = () => {
                                         </Form.Group>
 
                                         <Form.Group className="mb-3">
-                                            <Form.Label>Họ tên của bạn (*)</Form.Label>
+                                            <Form.Label>Họ tên của bạn (Tùy chọn)</Form.Label>
                                             <Form.Control
                                                 type="text"
-                                                placeholder="Ví dụ: Nguyễn Văn A"
+                                                placeholder="Có thể bỏ trống (Mặc định: Khách tại bàn)"
                                                 value={customerName}
                                                 onChange={(e) => setCustomerName(e.target.value)}
-                                                required
                                             />
                                         </Form.Group>
 
                                         <Form.Group className="mb-3">
-                                            <Form.Label>Số điện thoại (*)</Form.Label>
+                                            <Form.Label>Số điện thoại (Tùy chọn)</Form.Label>
                                             <Form.Control
                                                 type="tel"
-                                                placeholder="0912345678"
+                                                placeholder="Có thể bỏ trống (Ví dụ: 0912345678)"
                                                 value={customerPhone}
                                                 onChange={(e) => setCustomerPhone(e.target.value)}
-                                                required
                                             />
                                         </Form.Group>
 
@@ -329,7 +339,9 @@ const CartPage = () => {
                                             variant="primary"
                                             size="lg"
                                             className="w-100 fw-bold shadow-sm"
-                                            disabled={submitting || !tableCode}
+                                            disabled={
+                                                submitting || !tableCode || Boolean(unpaidOrder)
+                                            }
                                         >
                                             {submitting ? (
                                                 <>
@@ -340,6 +352,8 @@ const CartPage = () => {
                                                     />
                                                     Đang gửi đơn...
                                                 </>
+                                            ) : unpaidOrder ? (
+                                                `Chờ Thanh Toán Đơn [${unpaidOrder.orderCode}]`
                                             ) : (
                                                 "Gửi Đơn Cho Nhà Bếp"
                                             )}

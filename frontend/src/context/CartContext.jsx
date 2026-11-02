@@ -19,7 +19,7 @@ const isToday = (dateStr) => {
 
 const getClearedIdsSet = () => {
     try {
-        const arr = JSON.parse(localStorage.getItem("cleared_order_ids") || "[]");
+        const arr = JSON.parse(sessionStorage.getItem("cleared_order_ids") || "[]");
         return new Set(Array.isArray(arr) ? arr.map(String) : []);
     } catch {
         return new Set();
@@ -29,14 +29,14 @@ const getClearedIdsSet = () => {
 export const CartProvider = ({ children }) => {
     const { user, loading: authLoading } = useAuth();
 
-    // 1. Ma ban hien tai (vd: T01)
+    // 1. Ma ban hien tai (luu trong sessionStorage de moi Tab la 1 thiet bi khach hang doc lap)
     const [tableCode, setTableCode] = useState(() => {
-        return localStorage.getItem("order_table_code") || "";
+        return sessionStorage.getItem("order_table_code") || "";
     });
 
     // 2. Danh sach mon trong gio
     const [cartItems, setCartItems] = useState(() => {
-        const saved = localStorage.getItem("order_cart_items");
+        const saved = sessionStorage.getItem("order_cart_items");
         if (!saved) return [];
         try {
             const parsed = JSON.parse(saved);
@@ -57,13 +57,13 @@ export const CartProvider = ({ children }) => {
     const [ordersLoading, setOrdersLoading] = useState(false);
     const [ordersError, setOrdersError] = useState("");
 
-    // Luu localStorage moi khi doi ban hoac doi mon
+    // Luu sessionStorage moi khi doi ban hoac doi mon
     useEffect(() => {
-        localStorage.setItem("order_table_code", tableCode);
+        sessionStorage.setItem("order_table_code", tableCode);
     }, [tableCode]);
 
     useEffect(() => {
-        localStorage.setItem("order_cart_items", JSON.stringify(cartItems));
+        sessionStorage.setItem("order_cart_items", JSON.stringify(cartItems));
     }, [cartItems]);
 
     // 5. Tai danh sach don cua phien hom nay (cho ca khach dang nhap va khach vang lai)
@@ -76,7 +76,7 @@ export const CartProvider = ({ children }) => {
             const clearedSet = getClearedIdsSet();
             let guestIds = [];
             try {
-                guestIds = JSON.parse(localStorage.getItem("guest_orders") || "[]");
+                guestIds = JSON.parse(sessionStorage.getItem("guest_orders") || "[]");
                 if (!Array.isArray(guestIds)) guestIds = [];
             } catch {
                 guestIds = [];
@@ -148,11 +148,18 @@ export const CartProvider = ({ children }) => {
 
         const handleUpdated = (data) => {
             if (!data || !data.id) return;
+            if (data.tableCode) {
+                setTableCode(data.tableCode);
+            }
             setSessionOrders((prev) =>
                 prev.map((ord) =>
                     String(ord._id) === String(data.id)
                         ? {
                               ...ord,
+                              tableId: data.tableId ?? ord.tableId,
+                              tableName: data.tableName ?? ord.tableName,
+                              changeTableReason:
+                                  data.changeTableReason ?? ord.changeTableReason,
                               status: data.status ?? ord.status,
                               paymentRequested:
                                   data.paymentRequested !== undefined
@@ -160,6 +167,8 @@ export const CartProvider = ({ children }) => {
                                       : ord.paymentRequested,
                               paymentMethod: data.paymentMethod ?? ord.paymentMethod,
                               cancelReason: data.cancelReason ?? ord.cancelReason,
+                              feedback: data.feedback ?? ord.feedback,
+                              voidRefund: data.voidRefund ?? ord.voidRefund,
                               updatedAt: data.updatedAt || ord.updatedAt
                           }
                         : ord
@@ -181,11 +190,11 @@ export const CartProvider = ({ children }) => {
             const currentCleared = Array.from(getClearedIdsSet());
             const sessionIds = sessionOrders.map((o) => String(o._id));
             const merged = Array.from(new Set([...currentCleared, ...sessionIds])).slice(-100);
-            localStorage.setItem("cleared_order_ids", JSON.stringify(merged));
+            sessionStorage.setItem("cleared_order_ids", JSON.stringify(merged));
         } catch {
-            // Bo qua loi localStorage
+            // Bo qua loi sessionStorage
         }
-        localStorage.removeItem("guest_orders");
+        sessionStorage.removeItem("guest_orders");
         setSessionOrders([]);
     }, [sessionOrders]);
 
@@ -300,18 +309,18 @@ export const CartProvider = ({ children }) => {
         setCartItems(restored);
     };
 
-    // 13. Luu ma don hang cua khach vang lai vao localStorage
+    // 13. Luu ma don hang cua khach vang lai vao sessionStorage
     const saveGuestOrder = useCallback((orderId) => {
         if (!orderId) return;
         try {
-            const current = JSON.parse(localStorage.getItem("guest_orders") || "[]");
+            const current = JSON.parse(sessionStorage.getItem("guest_orders") || "[]");
             const updated = [
                 String(orderId),
                 ...current.filter((id) => id !== String(orderId))
             ].slice(0, 30);
-            localStorage.setItem("guest_orders", JSON.stringify(updated));
+            sessionStorage.setItem("guest_orders", JSON.stringify(updated));
         } catch {
-            localStorage.setItem("guest_orders", JSON.stringify([String(orderId)]));
+            sessionStorage.setItem("guest_orders", JSON.stringify([String(orderId)]));
         }
     }, []);
 

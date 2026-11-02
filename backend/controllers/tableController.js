@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const Table = require("../models/Table");
+const { emitToAll } = require("../socket");
 
 /**
  * 1. Lay danh sach tat ca ban an (Public: Khach xem de chon ban, Admin xem de quan ly)
@@ -69,8 +70,11 @@ exports.createTable = async (req, res) => {
         const newTable = await Table.create({
             code: formattedCode,
             name: name.trim(),
-            isActive: true
+            isActive: true,
+            isOccupied: false
         });
+
+        emitToAll("table:updated", newTable);
 
         return res.status(201).json({
             message: "Tao ban an moi thanh cong!",
@@ -96,11 +100,13 @@ exports.updateTable = async (req, res) => {
             return res.status(404).json({ error: "Khong tim thay ban can cap nhat!" });
         }
 
-        const { name, isActive } = req.body || {};
+        const { name, isActive, isOccupied } = req.body || {};
         if (name !== undefined) table.name = name.trim();
         if (isActive !== undefined) table.isActive = Boolean(isActive);
+        if (isOccupied !== undefined) table.isOccupied = Boolean(isOccupied);
 
         await table.save();
+        emitToAll("table:updated", table);
 
         return res.status(200).json({
             message: "Cap nhat ban an thanh cong!",
@@ -112,7 +118,71 @@ exports.updateTable = async (req, res) => {
 };
 
 /**
- * 5. Xoa ban an (Chi danh cho Admin)
+ * 5. Dao trang thai Hoat dong / Tam khoa cua ban an (Admin)
+ */
+exports.toggleTableActive = async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!mongoose.isValidObjectId(id)) {
+            return res.status(400).json({ error: "ID ban an khong dung dinh dang ObjectId!" });
+        }
+
+        const table = await Table.findById(id);
+        if (!table) {
+            return res.status(404).json({ error: "Khong tim thay ban can cap nhat!" });
+        }
+
+        table.isActive = !table.isActive;
+        if (!table.isActive) {
+            table.isOccupied = false;
+        }
+        await table.save();
+        emitToAll("table:updated", table);
+
+        return res.status(200).json({
+            message: `Da ${table.isActive ? "kich hoat" : "tam khoa"} ban [${table.code}]!`,
+            data: table
+        });
+    } catch (err) {
+        return res.status(400).json({ error: err.message });
+    }
+};
+
+/**
+ * 6. Cap nhat trang thai Co khach / Ban trong (Nhan vien va Admin)
+ * Body: { isOccupied: true | false } (neu khong truyen thi tu dong dao trang thai)
+ */
+exports.updateTableOccupancy = async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!mongoose.isValidObjectId(id)) {
+            return res.status(400).json({ error: "ID ban an khong dung dinh dang ObjectId!" });
+        }
+
+        const table = await Table.findById(id);
+        if (!table) {
+            return res.status(404).json({ error: "Khong tim thay ban can cap nhat!" });
+        }
+
+        const { isOccupied } = req.body || {};
+        table.isOccupied = isOccupied !== undefined ? Boolean(isOccupied) : !table.isOccupied;
+        await table.save();
+
+        emitToAll("table:updated", table);
+
+        return res.status(200).json({
+            message: table.isOccupied
+                ? `Ban [${table.code}] da chuyen sang trang thai: Dang co khach!`
+                : `Ban [${table.code}] da duoc lam trong, san sang don khach moi!`,
+            data: table
+        });
+    } catch (err) {
+        return res.status(400).json({ error: err.message });
+    }
+};
+
+/**
+ * 7. Xoa ban an (Chi danh cho Admin)
  */
 exports.deleteTable = async (req, res) => {
     try {

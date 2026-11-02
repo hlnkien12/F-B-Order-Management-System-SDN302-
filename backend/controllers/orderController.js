@@ -4,7 +4,7 @@ const MenuItem = require("../models/MenuItem");
 const Table = require("../models/Table");
 const Counter = require("../models/Counter");
 const { canTransition, STATUS_LABELS } = require("../utils/orderStatus");
-const { emitToStaff, emitToOrder } = require("../socket");
+const { emitToStaff, emitToOrder, emitToAll } = require("../socket");
 
 const phoneRegex = /^0[0-9]{9}$/;
 
@@ -39,24 +39,33 @@ exports.createOrder = async (req, res) => {
     try {
         const { tableCode, note, items } = req.body || {};
 
-        // 1.1. Khach da dang nhap thi tu dien ten va SDT tu tai khoan neu khong gui len
-        const customerName = (req.body.customerName || (req.user && req.user.name) || "").trim();
-        const customerPhone = (req.body.customerPhone || (req.user && req.user.phone) || "").trim();
-
-        if (!customerName) {
-            return res.status(400).json({ error: "Vui long nhap ho ten!" });
-        }
-        if (!phoneRegex.test(customerPhone)) {
-            return res.status(400).json({ error: "So dien thoai phai du 10 chu so va bat dau bang so 0!" });
-        }
-
-        // 1.2. Kiem tra ban
+        // 1.1. Kiem tra ban
         if (!tableCode || typeof tableCode !== "string") {
             return res.status(400).json({ error: "Vui long chon ban!" });
         }
         const table = await Table.findOne({ code: tableCode.toUpperCase().trim(), isActive: true });
         if (!table) {
             return res.status(400).json({ error: `Ban [${tableCode}] khong ton tai hoac dang ngung phuc vu!` });
+        }
+
+        // 1.2. Thong tin khach hang (Khong bat buoc nhap voi Guest: neu bo trong thi lay mac dinh theo ban)
+        const rawName = (req.body.customerName || (req.user && req.user.name) || "").trim();
+        const customerName = rawName || `Khách ${table.name}`;
+        const customerPhone = (req.body.customerPhone || (req.user && req.user.phone) || "").trim();
+
+        if (customerPhone && !phoneRegex.test(customerPhone)) {
+            return res.status(400).json({ error: "So dien thoai phai du 10 chu so va bat dau bang so 0 (hoac de trong)!" });
+        }
+
+        // 1.2b. Quy tac 1 order / luot: Don truoc phai thanh toan xong (completed) hoac da huy (cancelled) moi duoc tao don moi
+        const existingUnpaidOrder = await Order.findOne({
+            tableId: table._id,
+            status: { $in: ["pending", "confirmed", "served"] }
+        });
+        if (existingUnpaidOrder) {
+            return res.status(400).json({
+                error: `Ban [${table.name}] dang co don [${existingUnpaidOrder.orderCode}] chua thanh toan xong! Vui long thanh toan don hien tai truoc khi tao don moi.`
+            });
         }
 
         // 1.3. Kiem tra danh sach mon
@@ -121,7 +130,7 @@ exports.createOrder = async (req, res) => {
                     });
                 }
             } else {
-                // Mac dinh lay option dau tien (Thường hoac Size M voi priceDelta = 0)
+                // Mac dinh lay option dau tien (Thuong hoac Size M voi priceDelta = 0)
                 matchedOption = effectiveOptions[0] || { label: "", priceDelta: 0 };
             }
 
@@ -151,7 +160,14 @@ exports.createOrder = async (req, res) => {
             status: "pending"
         });
 
-        // 1.8. Bao ngay cho nhan vien co don moi
+        // 1.8. Danh dau ban dang co khach ngoi (isOccupied = true)
+        if (!table.isOccupied) {
+            table.isOccupied = true;
+            await table.save();
+            emitToAll("table:updated", table);
+        }
+
+        // 1.9. Bao ngay cho nhan vien co don moi
         emitToStaff("order:new", order);
 
         return res.status(201).json({
@@ -175,7 +191,7 @@ exports.trackOrder = async (req, res) => {
         }
 
         const order = await Order.findById(id).select(
-            "orderCode tableName items totalAmount status paymentRequested paymentMethod cancelReason note createdAt updatedAt"
+            "orderCode tableName items totalAmount status paymentRequested paymentMethod cancelReason changeTableReason feedback voidRefund note createdAt updatedAt"
         );
         if (!order) {
             return res.status(404).json({ error: "Khong tim thay don hang!" });
@@ -307,7 +323,6 @@ exports.updateOrderStatus = async (req, res) => {
     }
 };
 
-
 /**
  * 6. Khach hang tu huy don khi don dang cho quan xac nhan (Public)
  */
@@ -369,7 +384,7 @@ exports.getBatchOrdersTrack = async (req, res) => {
         const validIds = orderIds.filter((id) => mongoose.isValidObjectId(id));
         const orders = await Order.find({ _id: { $in: validIds } })
             .select(
-                "orderCode tableName items totalAmount status paymentRequested paymentMethod cancelReason note createdAt updatedAt"
+                "orderCode tableName items totalAmount status paymentRequested paymentMethod cancelReason changeTableReason feedback voidRefund note createdAt updatedAt"
             )
             .sort({ createdAt: -1 });
         return res.status(200).json({ data: orders });
@@ -379,19 +394,20 @@ exports.getBatchOrdersTrack = async (req, res) => {
 };
 
 /**
- * 8. Khach hang bam Goi Thanh Toan cho cac don tai ban (Public)
- * Body: { orderIds: ["id1", ...], paymentMethod: "cash" | "transfer" }
+ * 8. Khach hang bam "Goi Thanh Toan" cho cac don cua ban minh (Public)
+ * Body: { orderIds: ["id1", "id2"], paymentMethod: "cash" | "transfer" }
  */
 exports.requestPayment = async (req, res) => {
     try {
         const { orderIds, paymentMethod } = req.body || {};
         if (!Array.isArray(orderIds) || orderIds.length === 0) {
-            return res.status(400).json({ error: "Khong co don hang nao de goi thanh toan!" });
+            return res.status(400).json({ error: "Khong co don hang nao de thanh toan!" });
         }
 
         const method = paymentMethod === "transfer" ? "transfer" : "cash";
         const validIds = orderIds.filter((id) => mongoose.isValidObjectId(id));
 
+        // Chi cho phep goi thanh toan voi cac don da duoc quan xac nhan hoac da phuc vu
         const orders = await Order.find({
             _id: { $in: validIds },
             status: { $in: ["confirmed", "served"] }
@@ -488,6 +504,332 @@ exports.settleTableOrders = async (req, res) => {
         return res.status(200).json({
             message: `Da xac nhan thanh toan hoan tat cho ${orders.length} don!`,
             data: orders
+        });
+    } catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+};
+
+/**
+ * 10. Doi ban cho don hang dang phuc vu sang ban dang trong (Khach hoac Nhan vien/Admin)
+ * Body: { newTableCode: "T05", reason: "Ban cu bi nong" }
+ */
+exports.changeOrderTable = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { newTableCode, reason } = req.body || {};
+
+        if (!mongoose.isValidObjectId(id)) {
+            return res.status(400).json({ error: "Ma don khong dung dinh dang!" });
+        }
+        if (!newTableCode || typeof newTableCode !== "string") {
+            return res.status(400).json({ error: "Vui long chon ban muon chuyen den!" });
+        }
+        if (!reason || typeof reason !== "string" || reason.trim().length === 0) {
+            return res.status(400).json({ error: "Vui long nhap ly do doi ban!" });
+        }
+
+        const order = await Order.findById(id);
+        if (!order) {
+            return res.status(404).json({ error: "Khong tim thay don hang!" });
+        }
+
+        if (!["pending", "confirmed", "served"].includes(order.status)) {
+            return res.status(400).json({
+                error: "Chi co the doi ban cho don hang dang phuc vu (chua thanh toan hoac da huy)!"
+            });
+        }
+
+        const newTable = await Table.findOne({
+            code: newTableCode.toUpperCase().trim(),
+            isActive: true
+        });
+        if (!newTable) {
+            return res.status(400).json({
+                error: `Ban [${newTableCode}] khong ton tai hoac dang tam ngung phuc vu!`
+            });
+        }
+
+        if (String(newTable._id) === String(order.tableId)) {
+            return res.status(400).json({ error: "Don hang hien da o ban nay roi!" });
+        }
+
+        // Chi cho phep chuyen sang ban dang TRONG (isOccupied = false va khong co don chua thanh toan)
+        const targetUnpaidOrder = await Order.findOne({
+            tableId: newTable._id,
+            status: { $in: ["pending", "confirmed", "served"] }
+        });
+        if (newTable.isOccupied || targetUnpaidOrder) {
+            return res.status(400).json({
+                error: `Ban [${newTable.name}] hien dang co khach ngoi! Chi co the chuyen sang ban dang trong.`
+            });
+        }
+
+        const oldTable = await Table.findById(order.tableId);
+        const oldTableName = order.tableName;
+
+        // Cap nhat ban moi va ly do doi ban cho don hang
+        order.tableId = newTable._id;
+        order.tableName = newTable.name;
+        order.changeTableReason = `Từ ${oldTableName} sang ${newTable.name} (${reason.trim()})`;
+        await order.save();
+
+        // Giai phong ban cu ve trang thai Ban trong
+        if (oldTable) {
+            const remainingActiveOnOld = await Order.countDocuments({
+                tableId: oldTable._id,
+                _id: { $ne: order._id },
+                status: { $in: ["pending", "confirmed", "served"] }
+            });
+            if (remainingActiveOnOld === 0) {
+                oldTable.isOccupied = false;
+                await oldTable.save();
+                emitToAll("table:updated", oldTable);
+            }
+        }
+
+        // Danh dau ban moi Dang co khach
+        newTable.isOccupied = true;
+        await newTable.save();
+        emitToAll("table:updated", newTable);
+
+        const payload = {
+            id: order._id,
+            orderCode: order.orderCode,
+            tableId: order.tableId,
+            tableName: order.tableName,
+            tableCode: newTable.code,
+            changeTableReason: order.changeTableReason,
+            status: order.status,
+            paymentRequested: order.paymentRequested,
+            paymentMethod: order.paymentMethod,
+            cancelReason: order.cancelReason,
+            updatedAt: order.updatedAt
+        };
+        emitToStaff("order:updated", payload);
+        emitToOrder(String(order._id), "order:updated", payload);
+
+        return res.status(200).json({
+            message: `Da chuyen don [${order.orderCode}] tu ${oldTableName} sang ${newTable.name} thanh cong!`,
+            data: {
+                order,
+                newTableCode: newTable.code
+            }
+        });
+    } catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+};
+
+/**
+ * 11. Khach gui danh gia / phan hoi (Feedback) cho don hang (Public)
+ * Cho phep voi don served hoac completed
+ * Body: { rating: 1..5, issueCategory: "none"|"staff"|"ingredient"|"both", comment: "" }
+ */
+exports.submitOrderFeedback = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { rating, issueCategory, comment } = req.body || {};
+
+        if (!mongoose.isValidObjectId(id)) {
+            return res.status(400).json({ error: "Ma don khong dung dinh dang!" });
+        }
+
+        const numRating = Number(rating);
+        if (!Number.isInteger(numRating) || numRating < 1 || numRating > 5) {
+            return res.status(400).json({ error: "Diem danh gia phai la so nguyen tu 1 den 5 sao!" });
+        }
+
+        const validCategories = ["none", "staff", "ingredient", "both"];
+        const category = validCategories.includes(issueCategory) ? issueCategory : "none";
+        const trimmedComment = typeof comment === "string" ? comment.trim() : "";
+
+        const order = await Order.findById(id);
+        if (!order) {
+            return res.status(404).json({ error: "Khong tim thay don hang!" });
+        }
+
+        if (!["served", "completed"].includes(order.status)) {
+            return res.status(400).json({
+                error: "Chi co the gui danh gia khi don da duoc phuc vu (served) hoac da hoan tat (completed)!"
+            });
+        }
+
+        const isBadFeedback = numRating <= 2 || category !== "none";
+        if (isBadFeedback && !trimmedComment) {
+            return res.status(400).json({
+                error: "Vui long nhap noi dung phan hoi chi tiet ve van de nhan vien hoac nguyen lieu de quan kip thoi ho tro!"
+            });
+        }
+
+        order.feedback = {
+            rating: numRating,
+            issueCategory: category,
+            comment: trimmedComment,
+            isBadFeedback,
+            submittedAt: new Date()
+        };
+
+        await order.save();
+
+        const payload = {
+            id: order._id,
+            orderCode: order.orderCode,
+            tableId: order.tableId,
+            tableName: order.tableName,
+            status: order.status,
+            feedback: order.feedback,
+            voidRefund: order.voidRefund,
+            updatedAt: order.updatedAt
+        };
+
+        emitToStaff("order:updated", payload);
+        emitToOrder(String(order._id), "order:updated", payload);
+
+        if (isBadFeedback) {
+            emitToStaff("order:bad_feedback", {
+                orderId: order._id,
+                orderCode: order.orderCode,
+                tableName: order.tableName,
+                rating: numRating,
+                issueCategory: category,
+                comment: trimmedComment,
+                submittedAt: order.feedback.submittedAt
+            });
+        }
+
+        return res.status(200).json({
+            message: isBadFeedback
+                ? "Cam on ban da phan hoi. Quan da ghi nhan su co va se xu ly ngay!"
+                : "Cam on ban da gui danh gia cho bua an!",
+            data: order
+        });
+    } catch (err) {
+        return res.status(500).json({ error: err.message });
+    }
+};
+
+/**
+ * 12. Nhan vien va Admin xu ly su co Huy don / Hoan tien (Void / Refund)
+ * Body: { actionType: "void"|"full_refund"|"partial_refund", incidentCategory: "staff"|"ingredient"|"both", refundAmount: Number, reason: String }
+ */
+exports.processOrderVoidRefund = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { actionType, incidentCategory, refundAmount, reason } = req.body || {};
+
+        if (!mongoose.isValidObjectId(id)) {
+            return res.status(400).json({ error: "Ma don khong dung dinh dang!" });
+        }
+
+        const order = await Order.findById(id);
+        if (!order) {
+            return res.status(404).json({ error: "Khong tim thay don hang!" });
+        }
+
+        if (order.voidRefund && order.voidRefund.isProcessed) {
+            return res.status(400).json({
+                error: `Don hang nay da duoc xu ly [${order.voidRefund.actionType}] truoc do boi ${order.voidRefund.processedBy}!`
+            });
+        }
+
+        if (!["staff", "ingredient", "both"].includes(incidentCategory)) {
+            return res.status(400).json({
+                error: "Vui long chon nguyen nhan su co hop le: 'staff' (Nhan vien), 'ingredient' (Nguyen lieu) hoac 'both' (Ca hai)!"
+            });
+        }
+
+        const trimmedReason = typeof reason === "string" ? reason.trim() : "";
+        if (!trimmedReason) {
+            return res.status(400).json({ error: "Vui long nhap bien ban / ly do xu ly su co!" });
+        }
+
+        const processorName = (req.user && (req.user.name || req.user.email)) || "Nhan vien";
+        let finalActionType = actionType;
+        let finalRefundAmount = 0;
+
+        // Neu don chua thanh toan (pending, confirmed, served) -> Chi cho phep VOID (Huy don mien thu)
+        if (["pending", "confirmed", "served"].includes(order.status)) {
+            finalActionType = "void";
+            finalRefundAmount = order.totalAmount;
+
+            order.status = "cancelled";
+            order.paymentRequested = false;
+            order.cancelReason = `Huy don su co (${incidentCategory === "staff" ? "Loi nhan vien" : incidentCategory === "ingredient" ? "Loi nguyen lieu" : "Loi nhan vien va nguyen lieu"}): ${trimmedReason}`;
+
+            // Giai phong ban neu khong con don phuc vu khac
+            const table = await Table.findById(order.tableId);
+            if (table) {
+                const remainingActive = await Order.countDocuments({
+                    tableId: table._id,
+                    _id: { $ne: order._id },
+                    status: { $in: ["pending", "confirmed", "served"] }
+                });
+                if (remainingActive === 0) {
+                    table.isOccupied = false;
+                    await table.save();
+                    emitToAll("table:updated", table);
+                }
+            }
+        } else if (order.status === "completed") {
+            // Neu don da thanh toan -> Cho phep full_refund hoac partial_refund
+            if (!["full_refund", "partial_refund"].includes(actionType)) {
+                return res.status(400).json({
+                    error: "Don da thanh toan chi co the chon Hoan tien toan bo (full_refund) hoac Hoan tien mot phan (partial_refund)!"
+                });
+            }
+
+            if (actionType === "full_refund") {
+                finalRefundAmount = order.totalAmount;
+            } else {
+                const parsedAmt = Number(refundAmount);
+                if (isNaN(parsedAmt) || parsedAmt <= 0 || parsedAmt > order.totalAmount) {
+                    return res.status(400).json({
+                        error: `So tien hoan lai phai lon hon 0 va khong duoc vuot qua tong don (${order.totalAmount.toLocaleString("vi-VN")} d)!`
+                    });
+                }
+                finalRefundAmount = parsedAmt;
+            }
+        } else {
+            return res.status(400).json({ error: "Don hang o trang thai da huy, khong the xu ly hoan tien!" });
+        }
+
+        order.voidRefund = {
+            isProcessed: true,
+            actionType: finalActionType,
+            incidentCategory,
+            refundAmount: finalRefundAmount,
+            reason: trimmedReason,
+            processedBy: processorName,
+            processedAt: new Date()
+        };
+
+        await order.save();
+
+        const payload = {
+            id: order._id,
+            orderCode: order.orderCode,
+            tableId: order.tableId,
+            tableName: order.tableName,
+            status: order.status,
+            cancelReason: order.cancelReason,
+            feedback: order.feedback,
+            voidRefund: order.voidRefund,
+            updatedAt: order.updatedAt
+        };
+
+        emitToStaff("order:updated", payload);
+        emitToOrder(String(order._id), "order:updated", payload);
+
+        const actionText = finalActionType === "void"
+            ? "Huy don mien thu (Void)"
+            : finalActionType === "full_refund"
+            ? "Hoan tien 100%"
+            : `Hoan tien mot phan (${finalRefundAmount.toLocaleString("vi-VN")} d)`;
+
+        return res.status(200).json({
+            message: `Da xu ly ${actionText} thanh cong cho don [${order.orderCode}]!`,
+            data: order
         });
     } catch (err) {
         return res.status(500).json({ error: err.message });

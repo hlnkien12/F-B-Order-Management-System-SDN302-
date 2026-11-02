@@ -56,12 +56,12 @@ const orderSchema = new mongoose.Schema(
         },
         customerName: {
             type: String,
-            required: [true, "Ho ten khach hang la bat buoc!"],
+            default: "Khach tai ban",
             trim: true
         },
         customerPhone: {
             type: String,
-            required: [true, "So dien thoai khach hang la bat buoc!"],
+            default: "",
             trim: true
         },
         note: {
@@ -99,6 +99,72 @@ const orderSchema = new mongoose.Schema(
         cancelReason: {
             type: String,
             default: ""
+        },
+        changeTableReason: {
+            type: String,
+            default: "",
+            trim: true
+        },
+        feedback: {
+            rating: {
+                type: Number,
+                min: 1,
+                max: 5,
+                default: null
+            },
+            issueCategory: {
+                type: String,
+                enum: ["none", "staff", "ingredient", "both"],
+                default: "none"
+            },
+            comment: {
+                type: String,
+                default: "",
+                trim: true,
+                maxlength: [500, "Noi dung phan hoi toi da 500 ky tu!"]
+            },
+            isBadFeedback: {
+                type: Boolean,
+                default: false
+            },
+            submittedAt: {
+                type: Date,
+                default: null
+            }
+        },
+        voidRefund: {
+            isProcessed: {
+                type: Boolean,
+                default: false
+            },
+            actionType: {
+                type: String,
+                enum: ["", "void", "full_refund", "partial_refund"],
+                default: ""
+            },
+            incidentCategory: {
+                type: String,
+                enum: ["", "staff", "ingredient", "both"],
+                default: ""
+            },
+            refundAmount: {
+                type: Number,
+                default: 0,
+                min: 0
+            },
+            reason: {
+                type: String,
+                default: "",
+                trim: true
+            },
+            processedBy: {
+                type: String,
+                default: ""
+            },
+            processedAt: {
+                type: Date,
+                default: null
+            }
         }
     },
     { timestamps: true }

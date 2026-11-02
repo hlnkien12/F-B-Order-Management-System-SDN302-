@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Container, Card, Badge, Table, Button, Spinner, Alert, ProgressBar } from "react-bootstrap";
+import { Container, Card, Badge, Table, Button, Spinner, Alert, ProgressBar, Modal, Form } from "react-bootstrap";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import axiosClient from "../../api/axiosClient";
 import { socket } from "../../socket/socket";
@@ -23,6 +23,13 @@ const OrderTrackingPage = () => {
     const [loading, setLoading] = useState(true);
     const [cancelling, setCancelling] = useState(false);
     const [error, setError] = useState("");
+
+    // State cho Modal Danh Gia / Bao su co
+    const [showFeedbackModal, setShowFeedbackModal] = useState(false);
+    const [rating, setRating] = useState(5);
+    const [issueCategory, setIssueCategory] = useState("none");
+    const [feedbackComment, setFeedbackComment] = useState("");
+    const [submittingFeedback, setSubmittingFeedback] = useState(false);
 
     // 1. Luu ma don vao danh sach khach vang lai tren thiet bi
     useEffect(() => {
@@ -56,7 +63,21 @@ const OrderTrackingPage = () => {
         const handleUpdated = (data) => {
             if (String(data.id) === String(orderId)) {
                 setOrder((prev) =>
-                    prev ? { ...prev, status: data.status, cancelReason: data.cancelReason } : prev
+                    prev
+                        ? {
+                              ...prev,
+                              status: data.status,
+                              cancelReason: data.cancelReason,
+                              ...(data.tableName ? { tableName: data.tableName } : {}),
+                              ...(data.changeTableReason !== undefined
+                                  ? { changeTableReason: data.changeTableReason }
+                                  : {}),
+                              ...(data.feedback !== undefined ? { feedback: data.feedback } : {}),
+                              ...(data.voidRefund !== undefined
+                                  ? { voidRefund: data.voidRefund }
+                                  : {})
+                          }
+                        : prev
                 );
             }
         };
@@ -100,6 +121,50 @@ const OrderTrackingPage = () => {
             alert(msg);
         } finally {
             setCancelling(false);
+        }
+    };
+
+    const handleOpenFeedback = () => {
+        setRating(order?.feedback?.rating || 5);
+        setIssueCategory(order?.feedback?.issueCategory || "none");
+        setFeedbackComment(order?.feedback?.comment || "");
+        setShowFeedbackModal(true);
+    };
+
+    const handleSubmitFeedback = async (e) => {
+        e.preventDefault();
+        const isBad = Number(rating) <= 2 || issueCategory !== "none";
+        if (isBad && !feedbackComment.trim()) {
+            alert(
+                "Vui lòng nhập nội dung phản hồi chi tiết về vấn đề nhân viên hoặc nguyên liệu để quán kịp thời hỗ trợ!"
+            );
+            return;
+        }
+
+        try {
+            setSubmittingFeedback(true);
+            const res = await axiosClient.post(`/orders/${orderId}/feedback`, {
+                rating: Number(rating),
+                issueCategory,
+                comment: feedbackComment.trim()
+            });
+            const updated = res.data?.data || res.data;
+            if (updated) {
+                setOrder(updated);
+            }
+            if (refreshSessionOrders) {
+                refreshSessionOrders();
+            }
+            alert(res.data?.message || "Cảm ơn bạn đã gửi đánh giá!");
+            setShowFeedbackModal(false);
+        } catch (err) {
+            const msg =
+                err?.response?.data?.error ||
+                err?.response?.data?.message ||
+                (typeof err === "string" ? err : "Gửi đánh giá thất bại!");
+            alert(msg);
+        } finally {
+            setSubmittingFeedback(false);
         }
     };
 
@@ -165,10 +230,53 @@ const OrderTrackingPage = () => {
                         </Alert>
                     )}
 
+                    {order.voidRefund && order.voidRefund.isProcessed && (
+                        <Alert
+                            variant={order.voidRefund.actionType === "void" ? "danger" : "warning"}
+                            className="py-2"
+                        >
+                            <div className="fw-bold fs-6">
+                                {order.voidRefund.actionType === "void" && "Đơn hàng đã được Miễn Thu (Void)"}
+                                {order.voidRefund.actionType === "full_refund" && `Đã Hoàn Tiền 100% (${(order.voidRefund.refundAmount || order.totalAmount).toLocaleString("vi-VN")} đ)`}
+                                {order.voidRefund.actionType === "partial_refund" && `Đã Hoàn Tiền Một Phần (${(order.voidRefund.refundAmount || 0).toLocaleString("vi-VN")} đ)`}
+                            </div>
+                            <div className="small mt-1">
+                                <strong>Lý do sự cố ({order.voidRefund.incidentCategory === "staff" ? "Nhân viên" : order.voidRefund.incidentCategory === "ingredient" ? "Nguyên liệu" : "Cả nhân viên và nguyên liệu"}):</strong> {order.voidRefund.reason}
+                            </div>
+                        </Alert>
+                    )}
+
+                    {order.feedback && order.feedback.submittedAt && (
+                        <div
+                            className={`p-3 rounded mb-3 border small ${
+                                order.feedback.isBadFeedback
+                                    ? "bg-danger-subtle border-danger text-danger-emphasis"
+                                    : "bg-success-subtle border-success text-success-emphasis"
+                            }`}
+                        >
+                            <div className="fw-bold">
+                                Đánh giá của bạn: {order.feedback.rating} Sao
+                                {order.feedback.issueCategory !== "none" && (
+                                    <span className="ms-1">
+                                        (Phản ánh: {order.feedback.issueCategory === "staff" ? "Lỗi nhân viên" : order.feedback.issueCategory === "ingredient" ? "Lỗi nguyên liệu" : "Lỗi nhân viên & nguyên liệu"})
+                                    </span>
+                                )}
+                            </div>
+                            {order.feedback.comment && (
+                                <div className="fst-italic mt-1">"{order.feedback.comment}"</div>
+                            )}
+                        </div>
+                    )}
+
                     <div className="bg-light p-3 rounded mb-3 small">
                         <div>
                             <strong>Bàn phục vụ:</strong> {toVietnamese(order.tableName)}
                         </div>
+                        {order.changeTableReason && (
+                            <div className="text-info-emphasis mt-1">
+                                <strong>Lịch sử đổi bàn:</strong> {order.changeTableReason}
+                            </div>
+                        )}
                         <div>
                             <strong>Thời gian đặt:</strong>{" "}
                             {new Date(order.createdAt).toLocaleString("vi-VN")}
@@ -213,8 +321,32 @@ const OrderTrackingPage = () => {
                                     {order.totalAmount.toLocaleString("vi-VN")} đ
                                 </td>
                             </tr>
+                            {order.voidRefund && order.voidRefund.isProcessed && order.voidRefund.refundAmount > 0 && (
+                                <tr>
+                                    <td colSpan={2} className="fw-semibold text-success">
+                                        Đã hoàn trả lại ({order.voidRefund.actionType === "full_refund" ? "100%" : "Một phần"}):
+                                    </td>
+                                    <td className="text-end fw-bold text-success fs-6">
+                                        -{order.voidRefund.refundAmount.toLocaleString("vi-VN")} đ
+                                    </td>
+                                </tr>
+                            )}
                         </tfoot>
                     </Table>
+
+                    {["served", "completed"].includes(order.status) && (
+                        <div className="mb-3">
+                            <Button
+                                variant={order.feedback?.submittedAt ? "outline-success" : "outline-warning"}
+                                className="w-100 fw-bold py-2"
+                                onClick={handleOpenFeedback}
+                            >
+                                {order.feedback?.submittedAt
+                                    ? `Đã Đánh Giá (${order.feedback.rating} Sao)`
+                                    : "Đánh Giá / Phản Hồi Dịch Vụ"}
+                            </Button>
+                        </div>
+                    )}
 
                     {order.status === "pending" && (
                         <div className="mb-3">
@@ -246,6 +378,89 @@ const OrderTrackingPage = () => {
                     </div>
                 </Card.Body>
             </Card>
+
+            {/* Modal Gui Danh Gia / Bao su co */}
+            <Modal
+                show={showFeedbackModal}
+                onHide={() => setShowFeedbackModal(false)}
+                centered
+            >
+                <Form onSubmit={handleSubmitFeedback}>
+                    <Modal.Header closeButton>
+                        <Modal.Title className="fs-5 fw-bold">
+                            Đánh Giá Đơn {order.orderCode} ({toVietnamese(order.tableName)})
+                        </Modal.Title>
+                    </Modal.Header>
+                    <Modal.Body>
+                        <Form.Group className="mb-3">
+                            <Form.Label className="fw-semibold">
+                                Mức độ hài lòng (*)
+                            </Form.Label>
+                            <Form.Select
+                                value={rating}
+                                onChange={(e) => setRating(Number(e.target.value))}
+                            >
+                                <option value={5}>5 Sao - Rất hài lòng / Đồ ăn ngon</option>
+                                <option value={4}>4 Sao - Hài lòng / Phục vụ tốt</option>
+                                <option value={3}>3 Sao - Bình thường / Tạm ổn</option>
+                                <option value={2}>2 Sao - Chưa hài lòng</option>
+                                <option value={1}>1 Sao - Rất tệ / Không hài lòng</option>
+                            </Form.Select>
+                        </Form.Group>
+
+                        <Form.Group className="mb-3">
+                            <Form.Label className="fw-semibold">
+                                Phân loại sự cố (nếu có)
+                            </Form.Label>
+                            <Form.Select
+                                value={issueCategory}
+                                onChange={(e) => setIssueCategory(e.target.value)}
+                            >
+                                <option value="none">Không có sự cố (Hài lòng)</option>
+                                <option value="staff">Thái độ / tác phong của nhân viên chưa tốt</option>
+                                <option value="ingredient">Chất lượng nguyên liệu / món ăn có vấn đề</option>
+                                <option value="both">Gặp sự cố cả nhân viên và nguyên liệu</option>
+                            </Form.Select>
+                            {issueCategory !== "none" && (
+                                <Form.Text className="text-danger fw-semibold">
+                                    Phản hồi này sẽ được gửi trực tiếp tới quản lý quán để hỗ trợ hoàn tiền hoặc xử lý ngay!
+                                </Form.Text>
+                            )}
+                        </Form.Group>
+
+                        <Form.Group className="mb-3">
+                            <Form.Label className="fw-semibold">
+                                Nội dung phản hồi chi tiết {(Number(rating) <= 2 || issueCategory !== "none") && "(*)"}
+                            </Form.Label>
+                            <Form.Control
+                                as="textarea"
+                                rows={3}
+                                placeholder="Mô tả trải nghiệm của bạn hoặc chi tiết sự cố gặp phải..."
+                                value={feedbackComment}
+                                onChange={(e) => setFeedbackComment(e.target.value)}
+                                required={Number(rating) <= 2 || issueCategory !== "none"}
+                            />
+                        </Form.Group>
+                    </Modal.Body>
+                    <Modal.Footer>
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => setShowFeedbackModal(false)}
+                        >
+                            Đóng
+                        </Button>
+                        <Button
+                            type="submit"
+                            variant="primary"
+                            size="sm"
+                            disabled={submittingFeedback}
+                        >
+                            {submittingFeedback ? "Đang gửi..." : "Gửi Đánh Giá"}
+                        </Button>
+                    </Modal.Footer>
+                </Form>
+            </Modal>
         </Container>
     );
 };

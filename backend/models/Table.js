@@ -17,6 +17,10 @@ const tableSchema = new mongoose.Schema(
         isActive: {
             type: Boolean,
             default: true
+        },
+        isOccupied: {
+            type: Boolean,
+            default: false
         }
     },
     { timestamps: true }

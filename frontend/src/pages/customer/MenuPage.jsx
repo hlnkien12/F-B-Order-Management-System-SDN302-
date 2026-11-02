@@ -115,7 +115,7 @@ const MenuPage = () => {
         fetchData();
     }, []);
 
-    // 3. Lang nghe Socket: Khi nhan vien bat/tat mon -> tu dong cap nhat realtime
+    // 3. Lang nghe Socket: Khi nhan vien bat/tat mon hoac cap nhat trang thai ban -> tu dong cap nhat realtime
     useEffect(() => {
         const handleMenuUpdated = (data) => {
             setMenuItems((prev) =>
@@ -125,9 +125,22 @@ const MenuPage = () => {
             );
         };
 
+        const handleTableUpdated = (updatedTable) => {
+            if (!updatedTable || !updatedTable._id) return;
+            setTables((prev) =>
+                prev.map((t) =>
+                    String(t._id) === String(updatedTable._id)
+                        ? { ...updatedTable, displayName: toVietnamese(updatedTable.name) }
+                        : t
+                )
+            );
+        };
+
         socket.on("menu:updated", handleMenuUpdated);
+        socket.on("table:updated", handleTableUpdated);
         return () => {
             socket.off("menu:updated", handleMenuUpdated);
+            socket.off("table:updated", handleTableUpdated);
         };
     }, []);
 
@@ -175,11 +188,20 @@ const MenuPage = () => {
             {/* Chon ban neu chua co */}
             <Card className="mb-4 shadow-sm border-0 bg-white">
                 <Card.Body className="p-3 d-flex flex-wrap align-items-center justify-content-between gap-2">
-                    <div>
+                    <div className="d-flex align-items-center gap-2">
                         <span className="text-muted small">Vị trí ngồi: </span>
                         <strong className="fs-5 text-primary">
                             {tableCode ? `Bàn ${tableCode}` : "Chưa chọn bàn"}
                         </strong>
+                        {tableCode && (() => {
+                            const currentTb = tables.find((t) => t.code === tableCode);
+                            if (!currentTb) return null;
+                            return (
+                                <Badge bg={currentTb.isOccupied ? "danger" : "success"}>
+                                    {currentTb.isOccupied ? "Đang có khách" : "Bàn trống"}
+                                </Badge>
+                            );
+                        })()}
                     </div>
                     <div className="d-flex align-items-center gap-2">
                         <span className="small text-muted">Chọn / Đổi bàn:</span>
@@ -187,12 +209,12 @@ const MenuPage = () => {
                             size="sm"
                             value={tableCode}
                             onChange={(e) => setTableCode(e.target.value)}
-                            style={{ width: 170 }}
+                            style={{ width: 230 }}
                         >
                             <option value="">-- Chọn bàn --</option>
-                            {tables.map((t) => (
+                            {tables.filter((t) => t.isActive !== false).map((t) => (
                                 <option key={t._id} value={t.code}>
-                                    {t.displayName} ({t.code})
+                                    {t.displayName} ({t.code}) - {t.isOccupied ? "Đang có khách" : "Bàn trống"}
                                 </option>
                             ))}
                         </Form.Select>

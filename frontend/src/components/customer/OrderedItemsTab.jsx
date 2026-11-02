@@ -9,12 +9,14 @@ import {
     Spinner,
     Alert,
     ProgressBar,
-    Form
+    Form,
+    Modal
 } from "react-bootstrap";
 import { Link } from "react-router-dom";
 import axiosClient from "../../api/axiosClient";
 import { useCart } from "../../context/CartContext";
 import { useAuth } from "../../context/AuthContext";
+import { socket } from "../../socket/socket";
 import { toVietnamese } from "../../utils/vietnameseDictionary";
 
 const STATUS_MAP = {
@@ -28,6 +30,7 @@ const STATUS_MAP = {
 const OrderedItemsTab = ({ hideEmptyState = false }) => {
     const { user } = useAuth();
     const {
+        setTableCode,
         sessionOrders,
         setSessionOrders,
         ordersLoading,
@@ -37,14 +40,45 @@ const OrderedItemsTab = ({ hideEmptyState = false }) => {
         clearGuestOrders
     } = useCart();
 
+    const [tables, setTables] = useState([]);
     const [cancellingId, setCancellingId] = useState(null);
     const [paymentMethod, setPaymentMethod] = useState("cash");
     const [requestingPayment, setRequestingPayment] = useState(false);
     const [paymentNotice, setPaymentNotice] = useState("");
     const [countdown, setCountdown] = useState(60);
 
+    // State cho Modal Doi ban cua khach
+    const [changeTableOrder, setChangeTableOrder] = useState(null);
+    const [targetTableCode, setTargetTableCode] = useState("");
+    const [changeTableReasonText, setChangeTableReasonText] = useState("");
+    const [changingTable, setChangingTable] = useState(false);
+
+    // State cho Modal Gui Feedback / Bao su co
+    const [feedbackOrder, setFeedbackOrder] = useState(null);
+    const [rating, setRating] = useState(5);
+    const [issueCategory, setIssueCategory] = useState("none");
+    const [feedbackComment, setFeedbackComment] = useState("");
+    const [submittingFeedback, setSubmittingFeedback] = useState(false);
+
     useEffect(() => {
         refreshSessionOrders();
+        axiosClient
+            .get("/tables")
+            .then((res) => setTables(res.data || res || []))
+            .catch(() => {});
+
+        const handleTableUpdated = (updatedTable) => {
+            if (!updatedTable || !updatedTable._id) return;
+            setTables((prev) =>
+                prev.map((t) =>
+                    String(t._id) === String(updatedTable._id) ? updatedTable : t
+                )
+            );
+        };
+        socket.on("table:updated", handleTableUpdated);
+        return () => {
+            socket.off("table:updated", handleTableUpdated);
+        };
     }, [refreshSessionOrders]);
 
     const validOrders = sessionOrders.filter((ord) => ord.status !== "cancelled");
@@ -147,7 +181,88 @@ const OrderedItemsTab = ({ hideEmptyState = false }) => {
         }
     };
 
-    const sessionTotalAmount = validOrders.reduce((sum, ord) => sum + (ord.totalAmount || 0), 0);
+    const handleConfirmChangeTable = async (e) => {
+        e.preventDefault();
+        if (!changeTableOrder || !targetTableCode || !changeTableReasonText.trim()) return;
+        try {
+            setChangingTable(true);
+            const res = await axiosClient.patch(
+                `/orders/${changeTableOrder._id}/change-table`,
+                {
+                    newTableCode: targetTableCode,
+                    reason: changeTableReasonText.trim()
+                }
+            );
+            const updatedOrder = res.data?.order || res.order || res.data;
+            if (updatedOrder && updatedOrder._id) {
+                setSessionOrders((prev) =>
+                    prev.map((ord) =>
+                        String(ord._id) === String(updatedOrder._id) ? updatedOrder : ord
+                    )
+                );
+            }
+            setTableCode(targetTableCode);
+            setPaymentNotice(
+                `Đã chuyển đơn [${changeTableOrder.orderCode}] sang bàn ${targetTableCode} thành công!`
+            );
+            setChangeTableOrder(null);
+            setTargetTableCode("");
+            setChangeTableReasonText("");
+        } catch (err) {
+            alert(typeof err === "string" ? err : "Đổi bàn thất bại!");
+        } finally {
+            setChangingTable(false);
+        }
+    };
+
+    const handleOpenFeedback = (ord) => {
+        setFeedbackOrder(ord);
+        setRating(ord.feedback?.rating || 5);
+        setIssueCategory(ord.feedback?.issueCategory || "none");
+        setFeedbackComment(ord.feedback?.comment || "");
+    };
+
+    const handleSubmitFeedback = async (e) => {
+        e.preventDefault();
+        if (!feedbackOrder) return;
+        const isBad = Number(rating) <= 2 || issueCategory !== "none";
+        if (isBad && !feedbackComment.trim()) {
+            alert(
+                "Vui lòng nhập nội dung phản hồi chi tiết về vấn đề nhân viên hoặc nguyên liệu để quán kịp thời hỗ trợ!"
+            );
+            return;
+        }
+
+        try {
+            setSubmittingFeedback(true);
+            const res = await axiosClient.post(`/orders/${feedbackOrder._id}/feedback`, {
+                rating: Number(rating),
+                issueCategory,
+                comment: feedbackComment.trim()
+            });
+            const updated = res.data?.data || res.data;
+            if (updated && updated._id) {
+                setSessionOrders((prev) =>
+                    prev.map((o) => (String(o._id) === String(updated._id) ? updated : o))
+                );
+            }
+            alert(res.data?.message || "Cảm ơn bạn đã gửi đánh giá!");
+            setFeedbackOrder(null);
+        } catch (err) {
+            const msg =
+                err?.response?.data?.error ||
+                err?.response?.data?.message ||
+                (typeof err === "string" ? err : "Gửi đánh giá thất bại!");
+            alert(msg);
+        } finally {
+            setSubmittingFeedback(false);
+        }
+    };
+
+    const sessionTotalAmount = validOrders.reduce((sum, ord) => {
+        const refund = ord.voidRefund?.isProcessed ? ord.voidRefund.refundAmount || 0 : 0;
+        return sum + Math.max(0, (ord.totalAmount || 0) - refund);
+    }, 0);
     const unpaidAmount = sessionOrders
         .filter((ord) => ["pending", "confirmed", "served"].includes(ord.status))
         .reduce((sum, ord) => sum + (ord.totalAmount || 0), 0);
@@ -345,14 +460,31 @@ const OrderedItemsTab = ({ hideEmptyState = false }) => {
                                 <Col key={ord._id} lg={6}>
                                     <Card className="shadow-sm border-0 h-100">
                                         <Card.Header className="bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
-                                            <div>
+                                            <div className="d-flex align-items-center flex-wrap gap-1">
                                                 <span className="text-muted small">Mã đơn: </span>
                                                 <strong className="text-primary fs-6">
                                                     {ord.orderCode}
                                                 </strong>
-                                                <span className="ms-2 badge bg-dark fw-normal">
+                                                <span className="ms-1 badge bg-dark fw-normal">
                                                     {toVietnamese(ord.tableName)}
                                                 </span>
+                                                {["pending", "confirmed", "served"].includes(
+                                                    ord.status
+                                                ) && (
+                                                    <Button
+                                                        variant="outline-primary"
+                                                        size="sm"
+                                                        className="py-0 px-2 fw-semibold ms-1"
+                                                        style={{ fontSize: "0.72rem" }}
+                                                        onClick={() => {
+                                                            setChangeTableOrder(ord);
+                                                            setTargetTableCode("");
+                                                            setChangeTableReasonText("");
+                                                        }}
+                                                    >
+                                                        Đổi Bàn
+                                                    </Button>
+                                                )}
                                             </div>
                                             <Badge
                                                 bg={currentStatus.variant}
@@ -402,8 +534,14 @@ const OrderedItemsTab = ({ hideEmptyState = false }) => {
                                                     <strong>Thời gian đặt:</strong>{" "}
                                                     {new Date(ord.createdAt).toLocaleString("vi-VN")}
                                                 </div>
+                                                {ord.changeTableReason && (
+                                                    <div className="text-info-emphasis bg-info-subtle border border-info rounded px-2 py-1 mt-1">
+                                                        <strong>Lịch sử đổi bàn:</strong>{" "}
+                                                        {ord.changeTableReason}
+                                                    </div>
+                                                )}
                                                 {ord.note && (
-                                                    <div className="text-danger">
+                                                    <div className="text-danger mt-1">
                                                         <strong>Ghi chú:</strong> {ord.note}
                                                     </div>
                                                 )}
@@ -414,6 +552,44 @@ const OrderedItemsTab = ({ hideEmptyState = false }) => {
                                                     <strong>Lý do hủy:</strong>{" "}
                                                     {ord.cancelReason || "Không có lý do cụ thể."}
                                                 </Alert>
+                                            )}
+
+                                            {ord.voidRefund && ord.voidRefund.isProcessed && (
+                                                <Alert
+                                                    variant={ord.voidRefund.actionType === "void" ? "danger" : "warning"}
+                                                    className="py-2 small mb-2"
+                                                >
+                                                    <div className="fw-bold">
+                                                        {ord.voidRefund.actionType === "void" && "Đơn hàng đã được Miễn Thu (Void)"}
+                                                        {ord.voidRefund.actionType === "full_refund" && `Đã Hoàn Tiền 100% (${(ord.voidRefund.refundAmount || ord.totalAmount).toLocaleString("vi-VN")} đ)`}
+                                                        {ord.voidRefund.actionType === "partial_refund" && `Đã Hoàn Tiền Một Phần (${(ord.voidRefund.refundAmount || 0).toLocaleString("vi-VN")} đ)`}
+                                                    </div>
+                                                    <div>
+                                                        <strong>Lý do sự cố ({ord.voidRefund.incidentCategory === "staff" ? "Nhân viên" : ord.voidRefund.incidentCategory === "ingredient" ? "Nguyên liệu" : "Cả nhân viên và nguyên liệu"}):</strong> {ord.voidRefund.reason}
+                                                    </div>
+                                                </Alert>
+                                            )}
+
+                                            {ord.feedback && ord.feedback.submittedAt && (
+                                                <div
+                                                    className={`small p-2 rounded mb-2 border ${
+                                                        ord.feedback.isBadFeedback
+                                                            ? "bg-danger-subtle border-danger text-danger-emphasis"
+                                                            : "bg-success-subtle border-success text-success-emphasis"
+                                                    }`}
+                                                >
+                                                    <div className="fw-bold">
+                                                        Đánh giá của bạn: {ord.feedback.rating} Sao
+                                                        {ord.feedback.issueCategory !== "none" && (
+                                                            <span className="ms-1">
+                                                                (Phản ánh: {ord.feedback.issueCategory === "staff" ? "Lỗi nhân viên" : ord.feedback.issueCategory === "ingredient" ? "Lỗi nguyên liệu" : "Lỗi nhân viên & nguyên liệu"})
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {ord.feedback.comment && (
+                                                        <div className="fst-italic mt-1">"{ord.feedback.comment}"</div>
+                                                    )}
+                                                </div>
                                             )}
 
                                             <Table
@@ -465,9 +641,16 @@ const OrderedItemsTab = ({ hideEmptyState = false }) => {
                                             <div className="mt-auto pt-2 border-top">
                                                 <div className="d-flex justify-content-between align-items-center mb-3">
                                                     <span className="fw-bold">Tổng đơn này:</span>
-                                                    <span className="fw-bold text-danger fs-5">
-                                                        {ord.totalAmount.toLocaleString("vi-VN")} đ
-                                                    </span>
+                                                    <div className="text-end">
+                                                        <span className="fw-bold text-danger fs-5">
+                                                            {ord.totalAmount.toLocaleString("vi-VN")} đ
+                                                        </span>
+                                                        {ord.voidRefund && ord.voidRefund.isProcessed && ord.voidRefund.refundAmount > 0 && (
+                                                            <div className="small text-success fw-semibold">
+                                                                Đã hoàn lại: -{ord.voidRefund.refundAmount.toLocaleString("vi-VN")} đ
+                                                            </div>
+                                                        )}
+                                                    </div>
                                                 </div>
 
                                                 <div className="d-flex gap-2">
@@ -493,13 +676,25 @@ const OrderedItemsTab = ({ hideEmptyState = false }) => {
                                                             )}
                                                         </Button>
                                                     )}
+                                                    {["served", "completed"].includes(ord.status) && (
+                                                        <Button
+                                                            variant={ord.feedback?.submittedAt ? "outline-success" : "outline-warning"}
+                                                            size="sm"
+                                                            className="fw-semibold flex-grow-1"
+                                                            onClick={() => handleOpenFeedback(ord)}
+                                                        >
+                                                            {ord.feedback?.submittedAt
+                                                                ? `Đã Đánh Giá (${ord.feedback.rating} Sao)`
+                                                                : "Đánh Giá / Phản Hồi"}
+                                                        </Button>
+                                                    )}
                                                     <Button
                                                         as={Link}
                                                         to={`/track/${ord._id}`}
                                                         variant="outline-secondary"
                                                         size="sm"
                                                         className={
-                                                            ord.status === "pending"
+                                                            ord.status === "pending" || ["served", "completed"].includes(ord.status)
                                                                 ? ""
                                                                 : "w-100"
                                                         }
@@ -516,6 +711,179 @@ const OrderedItemsTab = ({ hideEmptyState = false }) => {
                     </Row>
                 </>
             )}
+
+            {/* Modal doi ban cho khach (chi cho chon ban dang trong) */}
+            <Modal
+                show={Boolean(changeTableOrder)}
+                onHide={() => setChangeTableOrder(null)}
+                centered
+            >
+                <Form onSubmit={handleConfirmChangeTable}>
+                    <Modal.Header closeButton>
+                        <Modal.Title className="fs-5 fw-bold">
+                            Đổi Bàn Cho Đơn {changeTableOrder?.orderCode}
+                        </Modal.Title>
+                    </Modal.Header>
+                    <Modal.Body>
+                        {changeTableOrder && (
+                            <>
+                                <div className="mb-3 small bg-light p-2 rounded">
+                                    <strong>Bàn hiện tại:</strong>{" "}
+                                    <span className="text-primary fw-bold">
+                                        {toVietnamese(changeTableOrder.tableName)}
+                                    </span>
+                                </div>
+                                <Form.Group>
+                                    <Form.Label className="fw-semibold">
+                                        Chọn bàn mới (Chỉ hiển thị các bàn đang trống) (*)
+                                    </Form.Label>
+                                    <Form.Select
+                                        value={targetTableCode}
+                                        onChange={(e) => setTargetTableCode(e.target.value)}
+                                        required
+                                    >
+                                        <option value="">-- Chọn bàn đang trống --</option>
+                                        {tables
+                                            .filter((t) => t.isActive && !t.isOccupied)
+                                            .map((t) => (
+                                                <option key={t._id} value={t.code}>
+                                                    {toVietnamese(t.name)} ({t.code}) - Bàn trống
+                                                </option>
+                                            ))}
+                                    </Form.Select>
+                                    {tables.filter((t) => t.isActive && !t.isOccupied).length ===
+                                        0 && (
+                                        <Form.Text className="text-danger">
+                                            Hiện tại không còn bàn nào đang trống để chuyển!
+                                        </Form.Text>
+                                    )}
+                                </Form.Group>
+                                <Form.Group className="mt-3">
+                                    <Form.Label className="fw-semibold">
+                                        Lý do đổi bàn (*)
+                                    </Form.Label>
+                                    <Form.Control
+                                        type="text"
+                                        placeholder="VD: Đổi sang bàn mát hơn / bàn rộng hơn..."
+                                        value={changeTableReasonText}
+                                        onChange={(e) => setChangeTableReasonText(e.target.value)}
+                                        required
+                                    />
+                                </Form.Group>
+                            </>
+                        )}
+                    </Modal.Body>
+                    <Modal.Footer>
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => setChangeTableOrder(null)}
+                        >
+                            Đóng
+                        </Button>
+                        <Button
+                            type="submit"
+                            variant="primary"
+                            size="sm"
+                            disabled={
+                                changingTable ||
+                                !targetTableCode ||
+                                !changeTableReasonText.trim() ||
+                                tables.filter((t) => t.isActive && !t.isOccupied).length === 0
+                            }
+                        >
+                            {changingTable ? "Đang chuyển bàn..." : "Xác Nhận Đổi Bàn"}
+                        </Button>
+                    </Modal.Footer>
+                </Form>
+            </Modal>
+
+            {/* Modal Gui Danh Gia / Phan Hoi cho khach */}
+            <Modal
+                show={Boolean(feedbackOrder)}
+                onHide={() => setFeedbackOrder(null)}
+                centered
+            >
+                <Form onSubmit={handleSubmitFeedback}>
+                    <Modal.Header closeButton>
+                        <Modal.Title className="fs-5 fw-bold">
+                            Đánh Giá Đơn {feedbackOrder?.orderCode} ({feedbackOrder && toVietnamese(feedbackOrder.tableName)})
+                        </Modal.Title>
+                    </Modal.Header>
+                    <Modal.Body>
+                        {feedbackOrder && (
+                            <>
+                                <Form.Group className="mb-3">
+                                    <Form.Label className="fw-semibold">
+                                        Mức độ hài lòng (*)
+                                    </Form.Label>
+                                    <Form.Select
+                                        value={rating}
+                                        onChange={(e) => setRating(Number(e.target.value))}
+                                    >
+                                        <option value={5}>5 Sao - Rất hài lòng / Đồ ăn ngon</option>
+                                        <option value={4}>4 Sao - Hài lòng / Phục vụ tốt</option>
+                                        <option value={3}>3 Sao - Bình thường / Tạm ổn</option>
+                                        <option value={2}>2 Sao - Chưa hài lòng</option>
+                                        <option value={1}>1 Sao - Rất tệ / Không hài lòng</option>
+                                    </Form.Select>
+                                </Form.Group>
+
+                                <Form.Group className="mb-3">
+                                    <Form.Label className="fw-semibold">
+                                        Phân loại sự cố (nếu có)
+                                    </Form.Label>
+                                    <Form.Select
+                                        value={issueCategory}
+                                        onChange={(e) => setIssueCategory(e.target.value)}
+                                    >
+                                        <option value="none">Không có sự cố (Hài lòng)</option>
+                                        <option value="staff">Thái độ / tác phong của nhân viên chưa tốt</option>
+                                        <option value="ingredient">Chất lượng nguyên liệu / món ăn có vấn đề</option>
+                                        <option value="both">Gặp sự cố cả nhân viên và nguyên liệu</option>
+                                    </Form.Select>
+                                    {issueCategory !== "none" && (
+                                        <Form.Text className="text-danger fw-semibold">
+                                            Phản hồi này sẽ được gửi trực tiếp tới quản lý quán để hỗ trợ hoàn tiền hoặc xử lý ngay!
+                                        </Form.Text>
+                                    )}
+                                </Form.Group>
+
+                                <Form.Group className="mb-3">
+                                    <Form.Label className="fw-semibold">
+                                        Nội dung phản hồi chi tiết {(Number(rating) <= 2 || issueCategory !== "none") && "(*)"}
+                                    </Form.Label>
+                                    <Form.Control
+                                        as="textarea"
+                                        rows={3}
+                                        placeholder="Mô tả trải nghiệm của bạn hoặc chi tiết sự cố gặp phải..."
+                                        value={feedbackComment}
+                                        onChange={(e) => setFeedbackComment(e.target.value)}
+                                        required={Number(rating) <= 2 || issueCategory !== "none"}
+                                    />
+                                </Form.Group>
+                            </>
+                        )}
+                    </Modal.Body>
+                    <Modal.Footer>
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => setFeedbackOrder(null)}
+                        >
+                            Đóng
+                        </Button>
+                        <Button
+                            type="submit"
+                            variant="primary"
+                            size="sm"
+                            disabled={submittingFeedback}
+                        >
+                            {submittingFeedback ? "Đang gửi..." : "Gửi Đánh Giá"}
+                        </Button>
+                    </Modal.Footer>
+                </Form>
+            </Modal>
         </div>
     );
 };

@@ -29,8 +29,8 @@ const createRateLimiter = (maxRequests, windowMs) => {
     };
 };
 
-// Gioi han tao don: toi da 5 don / 1 phut / 1 IP
-const orderRateLimiter = createRateLimiter(5, 60 * 1000);
+// Gioi han tao don: toi da 30 don / 1 phut / 1 IP (ho tro test nhieu tab khach hang cung luc)
+const orderRateLimiter = createRateLimiter(30, 60 * 1000);
 
 module.exports = {
     createRateLimiter,

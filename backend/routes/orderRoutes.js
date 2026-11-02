@@ -23,9 +23,16 @@ router.post("/:id/cancel", sanitizeInput, orderController.cancelOrderByCustomer)
 // 6. Khach hang bam Goi Thanh Toan tai ban (Public)
 router.post("/request-payment", sanitizeInput, orderController.requestPayment);
 
-// 7. Nhan vien va admin quan ly don
+// 7. Doi ban cho don dang phuc vu sang ban dang trong (Khach hoac Nhan vien/Admin)
+router.patch("/:id/change-table", sanitizeInput, orderController.changeOrderTable);
+
+// 8. Khach hang gui danh gia / phan hoi (Feedback) (Public)
+router.post("/:id/feedback", sanitizeInput, orderController.submitOrderFeedback);
+
+// 9. Nhan vien va admin quan ly don
 router.get("/", verifyToken, requireRole("staff", "admin"), orderController.getAllOrders);
 router.patch("/:id/status", verifyToken, requireRole("staff", "admin"), sanitizeInput, orderController.updateOrderStatus);
 router.post("/settle-table", verifyToken, requireRole("staff", "admin"), sanitizeInput, orderController.settleTableOrders);
+router.post("/:id/void-refund", verifyToken, requireRole("staff", "admin"), sanitizeInput, orderController.processOrderVoidRefund);
 
 module.exports = router;
